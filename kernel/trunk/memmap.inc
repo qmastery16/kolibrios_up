@@ -1,6 +1,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                              ;;
-;; Copyright (C) KolibriOS team 2004-2015. All rights reserved. ;;
+;; Copyright (C) KolibriOS team 2004-2022. All rights reserved. ;;
 ;; Distributed under terms of the GNU General Public License    ;;
 ;;                                                              ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -41,7 +41,7 @@
 ; 0x80000000 -> 0FFF  physical page zero - do not write
 ;                     (used by int 13h in some configurations)
 ;
-; 0x80001000 -> 2FFF   window_data   - 256 entries
+; 0x80001000 -> 8FFF   window_data   - 256 entries
 ;
 ;         0000 dword  x start
 ;         0004 dword  y start
@@ -51,31 +51,6 @@
 ;         0014 dword  color of grab bar
 ;         0018 dword  color of frames
 ;         001C dword  window flags, +30 = window drawn, +31 redraw flag
-;
-;   3000  ->   4FFF   task list      - 256 entries
-;
-;         00   dword  process count
-;         04   dword  no of processes
-;         10   dword  base of running process at 0x3000+
-;
-;         20   dword  application event mask
-;         24   dword  PID - process identification number
-;         2a   byte   slot state: 0=running, 1,2=suspended
-;                        3=zombie, 4=terminate,
-;                        5=waiting for event, 9 = not used
-;         2e   byte   window number on screen
-;         30   dword  exact position in memory
-;         34   dword  counter sum
-;         38   dword  time stamp counter add
-;         3c   dword  cpu usage in cpu timer tics
-;
-;
-;   5000  ->   68FF   free (6k6)
-;   6900  ->   6EFF   saved picture under mouse pointer (1k5)
-;
-;   6F00  ->   6FFF   free (256)
-;
-;   7000  ->   7FFF   used CD driver
 ;
 ;   8000  ->   A3FF   used FLOPPY driver
 ;
@@ -145,15 +120,10 @@
 ;   FFF5  byte        1 do not draw pointer
 ;   FFFF  byte        do not change task for 1/100 sec.
 ;
-; 0x80010000 ->  6CBFF   kernel, 32-bit run-time code (up to 371 Kb)
-
-; 0x8006CC00 ->  6DBFF   stack at boot time (4Kb)
+; 0x80010000 ->  7BC00   kernel, 32-bit run-time code (up to 431k)
 ;
-; 0x8006DC00 ->  6E5FF   free (2560)
-; 0x8006E600 ->  6Efff   free (2560)
-; 0x8006F000 ->  6FFFF   main page directory
-
-; 0x80070000 ->  7FFFF   data of retrieved disks and partitions (Mario79)
+; 0x8007CC00 ->  7DBFF   stack at boot time (4k)
+; 0x8007E000 ->  7FFFF   main page directory
 ; 0x80080000 ->  8FFFF   additional app info, in 256 byte steps - 256 entries
 ;
 ;         00  11db  name of app running
@@ -196,7 +166,7 @@
 ;         BC dword  address of debug event memory
 ;         C0  5 dd  thread debug registers: DR0,DR1,DR2,DR3,DR7
 ;
-; 0x80090000 ->  9FFFF   tmp (64k) - unused?
+; 0x80090000 ->  9FFFF   free (64k)
 ; 0x800A0000 ->  AFFFF   screen access area
 ; 0x800B0000 ->  FFFFF   bios rest in peace -area (320k)        ?
 ; 0x80100000 -> 27FFFF   diskette image (1m5)
@@ -240,11 +210,7 @@
 ;
 ; 0x802E0000 -> 2EFFFF   irq data area  (64k)  ;BOOT_VAR
 ;
-; 0x802F0000 -> 2F3FFF   tcp memory  stack_data_start eth_data_start (16k)
-;
-; 0x802F4000 -> 30ffff   stack_data | stack_data_end (112k)
-;
-; 0x80310000 -> 317fff   resendQ (32k)
+; 0x802F0000 -> 317fff   free (160k)
 ;
 ; 0x80318000 -> 31ffff   skin_data (32k)
 ;

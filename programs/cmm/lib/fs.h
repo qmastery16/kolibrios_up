@@ -6,13 +6,19 @@
 #include "../lib/date.h"
 #endif
 
+#ifndef INCLUDE_COLLECTION_H
+#include "../lib/collection.h"
+#endif
+
+#define PATHLEN 4096
+
 //===================================================//
 //                                                   //
 //              Basic System Functions               //
 //                                                   //
 //===================================================//
 
-:struct f70{
+:struct F70{
 	dword	func;
 	dword	param1;
 	dword	param2;
@@ -20,160 +26,186 @@
 	dword	param4;
 	char	rezerv;
 	dword	name;
-};
+} f70;
 
 :struct BDVK {
-	dword	readonly:1, hidden:1, system:1, volume_label:1, isfolder:1, notarchived:1, :0;
-	byte	type_name;
-	byte	rez1, rez2, selected;
-	dword   timecreate;
-	date 	datecreate;
-	dword	timelastaccess;
-	date	datelastaccess;
-	dword	timelastedit;
-	date	datelastedit;
-	dword	sizelo;
-	dword	sizehi;
-	char	name[518];
+	dword   readonly:1, hidden:1, system:1, volume_label:1, isfolder:1, notarchived:1, :0;
+	byte    type_name, rez1, rez2, selected; //name encoding
+	time    timecreate; //+8
+	date    datecreate;
+	time    timelastaccess;
+	date    datelastaccess;
+	time    timelastedit;
+	date    datelastedit;
+	dword   sizelo;
+	dword   sizehi;
+	char    name[520];
 };
+#define ATR_READONLY 1
+#define ATR_HIDDEN 2
+#define ATR_SYSTEM 4
+#define ATR_VOL_LABEL 8
+#define ATR_FOLDER 0x10
+#define ATR_NONARH 0x20
 
 
-
-:f70 getinfo_file_70;
 :dword GetFileInfo(dword file_path, bdvk_struct)
 {    
-    getinfo_file_70.func = 5;
-    getinfo_file_70.param1 = 
-    getinfo_file_70.param2 = 
-    getinfo_file_70.param3 = 0;
-    getinfo_file_70.param4 = bdvk_struct;
-    getinfo_file_70.rezerv = 0;
-    getinfo_file_70.name = file_path;
+    f70.func = 5;
+    f70.param1 = 
+    f70.param2 = 
+    f70.param3 = 0;
+    f70.param4 = bdvk_struct;
+    f70.rezerv = 0;
+    f70.name = file_path;
     $mov eax,70
-    $mov ebx,#getinfo_file_70.func
+    $mov ebx,#f70.func
     $int 0x40
 }
 
-:f70 setinfo_file_70;
+:dword GetVolumeLabel(dword _path)
+{
+	BDVK bdvk;
+	//if (ESBYTE[_path+1]=='k') || (ESBYTE[_path+2]=='y') return NULL;
+	f70.func = 5;
+	f70.param1 = 0;
+	f70.param2 = 1;
+	f70.param3 = 1;
+	f70.param4 = #bdvk;
+	f70.rezerv = 0;
+	f70.name = _path;
+	$mov eax,70
+	$mov ebx,#f70.func
+	$int 0x40
+	return #bdvk.name;
+}
+
 :dword SetFileInfo(dword file_path, bdvk_struct)
 {    
-    setinfo_file_70.func = 6;
-    setinfo_file_70.param1 = 
-    setinfo_file_70.param2 = 
-    setinfo_file_70.param3 = 0;
-    setinfo_file_70.param4 = bdvk_struct;
-    setinfo_file_70.rezerv = 0;
-    setinfo_file_70.name = file_path;
+    f70.func = 6;
+    f70.param1 = 
+    f70.param2 = 
+    f70.param3 = 0;
+    f70.param4 = bdvk_struct;
+    f70.rezerv = 0;
+    f70.name = file_path;
     $mov eax,70
-    $mov ebx,#setinfo_file_70.func
+    $mov ebx,#f70.func
     $int 0x40
 }
 
-:f70 run_file_70;
 :signed int RunProgram(dword run_path, run_param)
 {	
-    run_file_70.func = 7;
-    run_file_70.param1 = 
-    run_file_70.param3 = 
-    run_file_70.param4 = 
-    run_file_70.rezerv = 0;
-    run_file_70.param2 = run_param;
-    run_file_70.name = run_path;
+    f70.func = 7;
+    f70.param1 = 
+    f70.param3 = 
+    f70.param4 = 
+    f70.rezerv = 0;
+    f70.param2 = run_param;
+    f70.name = run_path;
     $mov eax,70
-    $mov ebx,#run_file_70.func
+    $mov ebx,#f70.func
     $int 0x40
 }
 
-:f70 create_dir_70;
 :int CreateDir(dword new_folder_path)
 {
-	create_dir_70.func = 9;
-	create_dir_70.param1 = 
-	create_dir_70.param2 = 
-	create_dir_70.param3 = 
-	create_dir_70.param4 = 
-	create_dir_70.rezerv = 0;
-	create_dir_70.name = new_folder_path;
+	f70.func = 9;
+	f70.param1 = 
+	f70.param2 = 
+	f70.param3 = 
+	f70.param4 = 
+	f70.rezerv = 0;
+	f70.name = new_folder_path;
 	$mov eax,70
-	$mov ebx,#create_dir_70.func
+	$mov ebx,#f70.func
 	$int 0x40
 }
 
-:f70 del_file_70;	
 :int DeleteFile(dword del_file_path)
 {    
-	del_file_70.func = 8;
-	del_file_70.param1 = 
-	del_file_70.param2 = 
-	del_file_70.param3 = 
-	del_file_70.param4 = 
-	del_file_70.rezerv = 0;
-	del_file_70.name = del_file_path;
+	f70.func = 8;
+	f70.param1 = 
+	f70.param2 = 
+	f70.param3 = 
+	f70.param4 = 
+	f70.rezerv = 0;
+	f70.name = del_file_path;
 	$mov eax,70
-	$mov ebx,#del_file_70.func
+	$mov ebx,#f70.func
 	$int 0x40
 }
 
-:f70 read_file_70; 
 :int ReadFile(dword offset, data_size, buffer, file_path)
 {
-	read_file_70.func = 0;
-	read_file_70.param1 = offset;
-	read_file_70.param2 = 0;
-	read_file_70.param3 = data_size;
-	read_file_70.param4 = buffer;
-	read_file_70.rezerv = 0;
-	read_file_70.name = file_path;
+	f70.func = 0;
+	f70.param1 = offset;
+	f70.param2 = 0;
+	f70.param3 = data_size;
+	f70.param4 = buffer;
+	f70.rezerv = 0;
+	f70.name = file_path;
 	$mov eax,70
-	$mov ebx,#read_file_70.func
+	$mov ebx,#f70.func
 	$int 0x40
 }
 
-:f70 write_file_70; 
 :int CreateFile(dword data_size, buffer, file_path)
 {
-	write_file_70.func = 2;
-	write_file_70.param1 = 0;
-	write_file_70.param2 = 0;
-	write_file_70.param3 = data_size;
-	write_file_70.param4 = buffer;
-	write_file_70.rezerv = 0;
-	write_file_70.name = file_path;
+	f70.func = 2;
+	f70.param1 = 0;
+	f70.param2 = 0;
+	f70.param3 = data_size;
+	f70.param4 = buffer;
+	f70.rezerv = 0;
+	f70.name = file_path;
 	$mov eax,70
-	$mov ebx,#write_file_70.func
+	$mov ebx,#f70.func
 	$int 0x40
 }
 
   ////////////////////////////////////////
  //     WriteInFileThatAlredyExists    //
 ////////////////////////////////////////
-:f70 write_file_offset_70; 
 :int WriteFile(dword offset, data_size, buffer, file_path)
 {
-	write_file_offset_70.func = 3;
-	write_file_offset_70.param1 = offset;
-	write_file_offset_70.param2 = 0;
-	write_file_offset_70.param3 = data_size;
-	write_file_offset_70.param4 = buffer;
-	write_file_offset_70.rezerv = 0;
-	write_file_offset_70.name = file_path;
+	f70.func = 3;
+	f70.param1 = offset;
+	f70.param2 = 0;
+	f70.param3 = data_size;
+	f70.param4 = buffer;
+	f70.rezerv = 0;
+	f70.name = file_path;
 	$mov eax,70
-	$mov ebx,#write_file_offset_70.func
+	$mov ebx,#f70.func
 	$int 0x40
 }
 
-:f70 read_dir_70;
+:int RenameMove(dword path_to, path_from)
+{
+	f70.func = 10;
+	f70.param1 = 
+	f70.param2 = 
+	f70.param3 = 0;
+	f70.param4 = path_to;
+	f70.rezerv = 0;
+	f70.name = path_from;
+	$mov eax,70
+	$mov ebx,#f70.func
+	$int 0x40
+}
+
 :int ReadDir(dword file_count, read_buffer, dir_path)
 {
-	read_dir_70.func = 1;
-	read_dir_70.param1 = 
-	read_dir_70.param2 = 
-	read_dir_70.rezerv = 0;
-	read_dir_70.param3 = file_count;
-	read_dir_70.param4 = read_buffer;
-	read_dir_70.name = dir_path;
+	f70.func = 1;
+	f70.param1 = 
+	f70.param2 = 
+	f70.rezerv = 0;
+	f70.param3 = file_count;
+	f70.param4 = read_buffer;
+	f70.name = dir_path;
 	$mov eax,70
-	$mov ebx,#read_dir_70.func
+	$mov ebx,#f70.func
 	$int 0x40
 }
 
@@ -194,6 +226,16 @@ inline fastcall void GetCurDir( ECX, EDX)
 	$int 0x40
 }
 
+:void read_file(dword path1, buf, size)
+{
+	EAX = 68;
+	EBX = 27;
+	ECX = path1;
+	$int 0x40;
+	ESDWORD[size] = EDX;
+	ESDWORD[buf] = EAX;
+}
+
 //===================================================//
 //                                                   //
 //                        Misc                       //
@@ -207,19 +249,23 @@ inline fastcall void GetCurDir( ECX, EDX)
 	return false;
 }
 
-/*
-// This implementation of dir_exists() is faster than
-// previous but here virtual folders like
-// '/' and '/tmp' are not recognised as FOLDERS
-// by GetFileInfo() => BDVK.isfolder attribute :(
+:dword get_file_size(dword _path)
+{
+	BDVK bdvk;
+	if (GetFileInfo(_path, #bdvk)!=0) return 0;
+	else return bdvk.sizelo;
+}
 
-:bool dir_exists(dword fpath)
+/* This implementation of dir_exists() is faster than
+   previous but here virtual folders like
+   '/' and '/tmp' are not recognised as FOLDERS
+   by GetFileInfo() => BDVK.isfolder attribute :( */
+bool real_dir_exists(dword fpath)
 {
 	BDVK fpath_atr;
 	if (GetFileInfo(fpath, #fpath_atr) != 0) return false; 
 	return fpath_atr.isfolder;
 }
-*/
 
 :bool file_exists(dword fpath)
 {
@@ -235,14 +281,14 @@ enum
 	DIRS_ONLYREAL
 };
 :int GetDir(dword dir_buf, file_count, path, doptions)
+dword buf, fcount, error;
+char readbuf[32];
 {
-	dword buf, fcount, error;
-	buf = malloc(32);
-	error = ReadDir(0, buf, path);
+	error = ReadDir(0, #readbuf, path);
 	if (!error)
 	{
-		fcount = ESDWORD[buf+8];
-		buf = realloc(buf, fcount+1*304+32);
+		fcount = ESDWORD[#readbuf+8];
+		buf = malloc(fcount+1*304+32);
 		ReadDir(fcount, buf, path);
 		//fcount=EBX;
 
@@ -261,7 +307,7 @@ enum
 	}
 	else
 	{
-		ESDWORD[dir_buf] = free(buf);
+		ESDWORD[dir_buf] = 0;
 		ESDWORD[file_count] = 0;
 	}
 	return error;
@@ -269,7 +315,7 @@ enum
 
 :dword abspath(dword relative_path) //GetAbsolutePathFromRelative()
 {
-	char absolute_path[4096];
+	char absolute_path[PATHLEN];
 	if (ESBYTE[relative_path]=='/')
 	{
 		strcpy(#absolute_path, relative_path);
@@ -305,6 +351,25 @@ enum
 	ExitProcess();
 }
 
+:bool file_name_is_8_3(dword name)
+{
+	strlen(name);
+	if (EAX>12) return false;
+	$push eax
+	strrchr(name, '.');
+	$pop ebx
+
+	//EAX = dot pos
+	//EBX = name length
+
+	if (EAX) {
+		if (EBX-EAX>3) return false;
+	} else {
+		if (EBX>8) return false; 
+	}
+	return true;
+}
+
 //===================================================//
 //                                                   //
 //                   Convert Size                    //
@@ -315,10 +380,10 @@ enum
 :dword ConvertSize(dword bytes)
 {
   byte size_nm[4];
-  if (bytes>=1073741824) strlcpy(#size_nm, "Gb",2);
-  else if (bytes>=1048576) strlcpy(#size_nm, "Mb",2);
-  else if (bytes>=1024) strlcpy(#size_nm, "Kb",2);
-  else strlcpy(#size_nm, "b ",2);
+  if (bytes>=1073741824) strlcpy(#size_nm, "GB",2);
+  else if (bytes>=1048576) strlcpy(#size_nm, "MB",2);
+  else if (bytes>=1024) strlcpy(#size_nm, "KB",2);
+  else strlcpy(#size_nm, "B ",2);
   while (bytes>1023) bytes >>= 10;
   sprintf(#ConvertSize_size_prefix,"%d %s",bytes,#size_nm);
   return #ConvertSize_size_prefix;
@@ -327,9 +392,9 @@ enum
 :dword ConvertSize64(dword bytes_lo, bytes_hi)
 {
   if (bytes_hi > 0) {
-	if (bytes_lo>=1073741824) bytes_lo >>= 30; else bytes_lo = 0;
-	sprintf(#ConvertSize_size_prefix,"%d Gb",bytes_hi<<2 + bytes_lo);
-	return #ConvertSize_size_prefix;
+		if (bytes_lo>=1073741824) bytes_lo >>= 30; else bytes_lo = 0;
+		sprintf(#ConvertSize_size_prefix,"%d GB",bytes_hi<<2 + bytes_lo);
+		return #ConvertSize_size_prefix;
   }
   else return ConvertSize(bytes_lo);
 }
@@ -337,19 +402,18 @@ enum
 :unsigned char size[25];
 :dword ConvertSizeToKb(unsigned int bytes)
 {
-	unsigned int kb;
 	dword kb_line;
 
 	if (bytes >= 1024)
 	{
 		kb_line = itoa(bytes / 1024);
 		strcpy(#size, kb_line);
-		strcat(#size, " Kb");		
+		strcat(#size, " KB");
 	}
 	else {
 		kb_line = itoa(bytes);
 		strcpy(#size, kb_line);
-		strcat(#size, " b");
+		strcat(#size, " B");
 	}
 
 	return #size;
@@ -422,29 +486,32 @@ int block_size=1024*1024*4; //copy by 4 MiB
 //                                                   //
 //===================================================//
 
-:struct _dir_size
+:struct DIR_SIZE
 {
 	BDVK dir_info;
 	dword folders;
 	dword files;
-	dword bytes;
-	void get();	
-	void calculate_loop();	
-} dir_size;
+	dword sizelo;
+	dword sizehi;
+	dword get();	
+	dword calculate_loop();	
+};
 
-:void _dir_size::get(dword way)
+:dword DIR_SIZE::get(dword way1)
 {
-	folders = files = bytes = 0;
-	if (way) calculate_loop(way);
+	folders = files = sizelo = sizehi = 0;
+	if (!way1) return 0;
+	calculate_loop(way1);
 }
 
-:void _dir_size::calculate_loop(dword way)
+:dword DIR_SIZE::calculate_loop(dword way)
 {
 	dword dirbuf, fcount, i, filename;
 	dword cur_file;
+	if (!way) return 0;
 	if (dir_exists(way))
 	{
-		cur_file = malloc(4096);
+		cur_file = malloc(PATHLEN);
 		// In the process of recursive descent, memory must be allocated dynamically, 
 		// because the static memory -> was a bug !!! But unfortunately pass away to sacrifice speed.
 		GetDir(#dirbuf, #fcount, way, DIRS_ONLYREAL);
@@ -453,7 +520,7 @@ int block_size=1024*1024*4; //copy by 4 MiB
 			filename = i*304+dirbuf+72;
 			sprintf(cur_file,"%s/%s",way,filename);
 			
-			if (TestBit(ESDWORD[filename-40], 4) )
+			if (ESDWORD[filename-40] & ATR_FOLDER )
 			{
 				folders++;
 				calculate_loop(cur_file);
@@ -461,13 +528,16 @@ int block_size=1024*1024*4; //copy by 4 MiB
 			else
 			{
 				GetFileInfo(cur_file, #dir_info);
-				bytes += dir_info.sizelo;
+				sizelo += dir_info.sizelo;
+				sizehi += dir_info.sizehi;
 				files++;
 			}
 		}
 		free(cur_file);
 		free(dirbuf);
 	}
+	return files;
 }
+
 
 #endif

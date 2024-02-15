@@ -35,7 +35,7 @@
 ; design by golus
 
 use32
-org     0x0
+org     0
         db 'MENUET01'
         dd 1, START, IM_END, I_END
         dd stacktop, file_path, cur_dir_path
@@ -44,13 +44,13 @@ include '../../../config.inc' ;for nightbuild
 include '../../../macros.inc'
 include '../../../proc32.inc'
 include '../../../KOSfuncs.inc'
-include '../../../develop/libraries/box_lib/load_lib.mac'
+include '../../../load_lib.mac'
 include '../../../dll.inc'
 include '../../../develop/libraries/libs-dev/libio/libio.inc'
 include '../../../develop/libraries/libs-dev/libimg/libimg.inc'
 ;include '../../../debug.inc'
 
-@use_library_mem mem.Alloc,mem.Free,mem.ReAlloc,dll.Load
+@use_library mem.Alloc,mem.Free,mem.ReAlloc,dll.Load
 
 ;---------------------------------------------------------
 ; *** константы для интерфейса ***
@@ -146,6 +146,7 @@ include 'init_data.inc'
 @@:
 ;OpenDialog     initialisation
         stdcall [OpenDialog_Init], OpenDialog_data
+        stdcall [ColorDialog_Init], ColorDialog_data
 ;---------------------------------------------------------------------
 
 align 4
@@ -206,7 +207,6 @@ include 'menu.inc'
 
 include 'lib_data.inc'
 include 'panel_data.inc'
-include 'palitra256.inc'
 include 'brushes.inc'
 include 'spray.inc'
 include 'width_lines.inc'

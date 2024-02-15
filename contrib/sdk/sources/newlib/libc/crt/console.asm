@@ -1,19 +1,16 @@
-include '../proc32.inc'
-
 format MS COFF
+
+include '../proc32.inc'
 
 public _load_libconsole
 
-public _con_init@20
-public _con_exit@4
-public _con_get_flags
-public _con_set_flags@4
-public _con_cls
-public _con_write_string@8
-public _con_getch2@0
+macro public_jmp name, size
+{
+  public _#name#@#size
+  _#name#@#size: jmp [name]
+}
 
-section '.text' align 16
-
+section '.text' align 16 code readable executable
 
 ;void* __fastcall getprocaddr(export, name)
 align 4
@@ -153,27 +150,6 @@ _load_libconsole:
 .fail:
         ret
 
-align 4
-_con_init@20:
-        jmp     [con_init]
-
-align 4
-_con_exit@4:
-        jmp     [con_exit]
-
-align 4
-_con_write_string@8:
-        jmp     [con_write_string]
-
-_con_getch2@0:
-        jmp     [con_getch2]
-
-_con_get_flags:
-_con_set_flags@4:
-_con_cls:
-        ret
-
-
 proc mem.Alloc, size
         push    ebx ecx
         mov     ecx, [size]
@@ -217,11 +193,26 @@ proc mem.Free, mptr
         ret
 endp
 
-;section '.ctors' align 4
-;align 4
-;dd _load_libconsole
+public_jmp  con_init, 20
+public_jmp  con_exit, 4
+public_jmp  con_gets, 8
+public_jmp  con_gets2, 12
+public_jmp  con_cls, 0
+public_jmp  con_getch2, 0
+public_jmp  con_getch, 0
+public_jmp  con_kbhit, 0
+public_jmp  con_set_cursor_pos, 8
+public_jmp  con_get_cursor_pos, 8
+public_jmp  con_write_string, 8
+public_jmp  con_write_asciiz, 4
+public_jmp  con_get_flags, 0
+public_jmp  con_set_flags, 4
+public_jmp  con_set_title, 4
+public_jmp  con_get_font_height, 0
+public_jmp  con_get_cursor_height, 0
+public_jmp  con_set_cursor_height, 4
 
-section '.data' align 16
+section '.data' align 16 readable writable
 
 ; -------------------------
 macro library [lname,fname]
@@ -258,18 +249,27 @@ align   4
 
 library console,        'console.obj'
 
-import  console,                            \
-        con_start,      'START',            \
-        con_init,       'con_init',         \
-        con_exit,       'con_exit',         \
-        con_gets,       'con_gets',         \
-        con_cls,        'con_cls',          \
-        con_getch2,     'con_getch2',       \
+import  console, \
+        con_start,      'START', \
+        con_init,       'con_init', \
+        con_exit,       'con_exit', \
+        con_gets,       'con_gets', \
+        con_gets2,      'con_gets2', \
+        con_cls,        'con_cls', \
+        con_getch2,     'con_getch2', \
+        con_getch,      'con_getch', \
+        con_kbhit,      'con_kbhit', \
         con_set_cursor_pos, 'con_set_cursor_pos',\
+        con_get_cursor_pos, 'con_get_cursor_pos', \
         con_write_string, 'con_write_string',\
-        con_get_flags,  'con_get_flags',    \
-        con_set_flags,  'con_set_flags'
-
+        con_write_asciiz, 'con_write_asciiz', \
+        con_get_flags,  'con_get_flags', \
+        con_set_flags,  'con_set_flags', \
+        con_set_title,  'con_set_title', \
+        con_get_font_height, 'con_get_font_height', \
+        con_get_cursor_height, 'con_get_cursor_height', \
+        con_set_cursor_height, 'con_set_cursor_height'
+        
 s_libdir:
   db '/sys/lib/'
   .fname rb 32

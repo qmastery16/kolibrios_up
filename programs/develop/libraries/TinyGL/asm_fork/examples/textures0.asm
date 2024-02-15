@@ -1,5 +1,5 @@
 use32
-	org 0x0
+	org 0
 	db 'MENUET01'
 	dd 1,start,i_end,mem,stacktop,0,cur_dir_path
 
@@ -7,16 +7,20 @@ include '../../../../../proc32.inc'
 include '../../../../../macros.inc'
 include '../../../../../KOSfuncs.inc'
 include '../../../../../load_img.inc'
+include '../../../../../load_lib.mac'
 include '../opengl_const.inc'
+include '../zbuffer.inc'
 include '../../../../../develop/info3ds/info_fun_float.inc'
 
-@use_library_mem mem.Alloc,mem.Free,mem.ReAlloc,dll.Load
+@use_library mem.Alloc,mem.Free,mem.ReAlloc,dll.Load
 
-align 4
-image_data_toolbar dd 0
+;Макрос для параметров типа double (8 байт)
+macro glpush GLDoubleVar {
+	push dword[GLDoubleVar+4]
+	push dword[GLDoubleVar]
+}
+
 IMAGE_TOOLBAR_ICON_SIZE equ 21*21*3
-
-offs_zbuf_pbuf equ 24 ;const. from 'zbuffer.inc'
 
 align 4
 start:
@@ -38,7 +42,7 @@ load_libraries l_libs_start,l_libs_end
 	stdcall [kosglMakeCurrent], 5,30,[buf_ogl.w],[buf_ogl.h],ctx1
 	stdcall [glEnable], GL_DEPTH_TEST
 	stdcall [glEnable], GL_NORMALIZE ;делам нормали одинаковой величины во избежание артефактов
-	stdcall [gluNewQuadric]
+	call [gluNewQuadric]
 	mov [qObj],eax
 	stdcall [gluQuadricTexture], eax,GL_TRUE
 
@@ -47,7 +51,7 @@ load_libraries l_libs_start,l_libs_end
 
 	mov eax,dword[ctx1] ;eax -> TinyGLContext.GLContext
 	mov eax,[eax] ;eax -> ZBuffer
-	mov eax,[eax+offs_zbuf_pbuf] ;eax -> ZBuffer.pbuf
+	mov eax,[eax+ZBuffer.pbuf]
 	mov dword[buf_ogl],eax
 
 	load_image_file 'font8x9.bmp', image_data_toolbar, buf_1.w,buf_1.h
@@ -112,7 +116,7 @@ draw_window:
 	add ebx,IMAGE_TOOLBAR_ICON_SIZE
 	mcall ,,,(95 shl 16)+5 ;масштаб -
 
-	stdcall [kosglSwapBuffers]
+	call [kosglSwapBuffers]
 	mcall SF_REDRAW,SSF_END_DRAW
 	popad
 	ret
@@ -146,7 +150,7 @@ key:
 		mov byte[txt_angle_y.v],0
 		stdcall str_cat, txt_angle_y.v,Data_String
 		call draw_3d
-		stdcall [kosglSwapBuffers]
+		call [kosglSwapBuffers]
 	@@:
 	cmp ah,177 ;Down
 	jne @f
@@ -160,7 +164,7 @@ key:
 		mov byte[txt_angle_y.v],0
 		stdcall str_cat, txt_angle_y.v,Data_String
 		call draw_3d
-		stdcall [kosglSwapBuffers]
+		call [kosglSwapBuffers]
 	@@:
 	cmp ah,176 ;Left
 	jne @f
@@ -174,7 +178,7 @@ key:
 		mov byte[txt_angle_z.v],0
 		stdcall str_cat, txt_angle_z.v,Data_String
 		call draw_3d
-		stdcall [kosglSwapBuffers]
+		call [kosglSwapBuffers]
 	@@:
 	cmp ah,179 ;Right
 	jne @f
@@ -188,7 +192,7 @@ key:
 		mov byte[txt_angle_z.v],0
 		stdcall str_cat, txt_angle_z.v,Data_String
 		call draw_3d
-		stdcall [kosglSwapBuffers]
+		call [kosglSwapBuffers]
 	@@:
 
 	jmp still
@@ -227,14 +231,14 @@ align 4
 but_dr_0:
 	mov dword[dr_figure],0
 	call draw_3d
-	stdcall [kosglSwapBuffers]
+	call [kosglSwapBuffers]
 	ret
 
 align 4
 but_dr_1:
 	mov dword[dr_figure],1
 	call draw_3d
-	stdcall [kosglSwapBuffers]
+	call [kosglSwapBuffers]
 	ret
 
 align 4
@@ -257,7 +261,7 @@ but_zoom_p:
 	mov byte[txt_scale.v],0
 	stdcall str_cat, txt_scale.v,Data_String
 	call draw_3d
-	stdcall [kosglSwapBuffers]
+	call [kosglSwapBuffers]
 	ret
 
 align 4
@@ -280,20 +284,17 @@ but_zoom_m:
 	mov byte[txt_scale.v],0
 	stdcall str_cat, txt_scale.v,Data_String
 	call draw_3d
-	stdcall [kosglSwapBuffers]
+	call [kosglSwapBuffers]
 	ret
 
 align 4
 caption db 'Test textures, [Esc] - exit, [<-],[->],[Up],[Down] - rotate',0
-align 4
-ctx1 db 28 dup (0) ;TinyGLContext or KOSGLContext
-;sizeof.TinyGLContext = 28
 
 align 4
 draw_3d:
 stdcall [glClear], GL_COLOR_BUFFER_BIT + GL_DEPTH_BUFFER_BIT ;очистим буфер цвета и глубины
 
-stdcall [glPushMatrix]
+call [glPushMatrix]
 	stdcall [glTranslatef], 0.0,0.0,0.5
 	stdcall [glScalef], [scale], [scale], [scale]
 	stdcall [glRotatef], [angle_z],0.0,0.0,1.0
@@ -378,21 +379,14 @@ jne @f
 	stdcall [glTexCoord2f], 0.0f, 1.0f
 	stdcall [glVertex3f], -1.0f,  1.0f, -1.0f ; Верх лево
 
-	stdcall [glEnd]
+	call [glEnd]
 @@:
-stdcall [glPopMatrix]
+call [glPopMatrix]
 
 	stdcall [buf2d_draw_text], buf_ogl, buf_1,txt_scale,5,5,0xffff00
 	stdcall [buf2d_draw_text], buf_ogl, buf_1,txt_angle_z,5,15,0xffff00
 	stdcall [buf2d_draw_text], buf_ogl, buf_1,txt_angle_y,5,25,0xffff00
 	ret
-
-dr_figure dd 0
-qObj dd 0
-TexObj dd 0 ;массив указателей на текстуры (в данном случае 1 шт.)
-texture dd 0 ;указатель на память с текстурой
-text_w dd 0
-text_h dd 0
 
 scale dd 0.4 ;начальный масштаб
 sc_delt dd 0.05 ;изменение масштаба при нажатии
@@ -412,7 +406,7 @@ lmodel_ambient dd 0.2, 0.2, 0.2, 1.0 ; Параметры фонового ос�
 
 ;--------------------------------------------------
 align 4
-import_lib_tinygl:
+import_tinygl:
 
 macro E_LIB n
 {
@@ -483,49 +477,51 @@ import_buf2d:
 align 4
 import_libimg:
 	dd alib_init1
-	img_is_img  dd aimg_is_img
-	img_info    dd aimg_info
-	img_from_file dd aimg_from_file
-	img_to_file dd aimg_to_file
-	img_from_rgb dd aimg_from_rgb
-	img_to_rgb  dd aimg_to_rgb
+;	img_is_img  dd aimg_is_img
+;	img_info    dd aimg_info
+;	img_from_file dd aimg_from_file
+;	img_to_file dd aimg_to_file
+;	img_from_rgb dd aimg_from_rgb
+;	img_to_rgb  dd aimg_to_rgb
 	img_to_rgb2 dd aimg_to_rgb2
 	img_decode  dd aimg_decode
-	img_encode  dd aimg_encode
-	img_create  dd aimg_create
+;	img_encode  dd aimg_encode
+;	img_create  dd aimg_create
 	img_destroy dd aimg_destroy
-	img_destroy_layer dd aimg_destroy_layer
-	img_count   dd aimg_count
-	img_lock_bits dd aimg_lock_bits
-	img_unlock_bits dd aimg_unlock_bits
-	img_flip    dd aimg_flip
-	img_flip_layer dd aimg_flip_layer
-	img_rotate  dd aimg_rotate
-	img_rotate_layer dd aimg_rotate_layer
-	img_draw    dd aimg_draw
+;	img_destroy_layer dd aimg_destroy_layer
+;	img_count   dd aimg_count
+;	img_lock_bits dd aimg_lock_bits
+;	img_unlock_bits dd aimg_unlock_bits
+;	img_flip    dd aimg_flip
+;	img_flip_layer dd aimg_flip_layer
+;	img_rotate  dd aimg_rotate
+;	img_rotate_layer dd aimg_rotate_layer
+;	img_draw    dd aimg_draw
+;	img_convert dd aimg_convert
 
 	dd 0,0
 	alib_init1   db 'lib_init',0
-	aimg_is_img  db 'img_is_img',0 ;определяет по данным, может ли библиотека сделать из них изображение
-	aimg_info    db 'img_info',0
-	aimg_from_file db 'img_from_file',0
-	aimg_to_file db 'img_to_file',0
-	aimg_from_rgb db 'img_from_rgb',0
-	aimg_to_rgb  db 'img_to_rgb',0 ;преобразование изображения в данные RGB
+;	aimg_is_img  db 'img_is_img',0 ;определяет по данным, может ли библиотека сделать из них изображение
+;	aimg_info    db 'img_info',0
+;	aimg_from_file db 'img_from_file',0
+;	aimg_to_file db 'img_to_file',0
+;	aimg_from_rgb db 'img_from_rgb',0
+;	aimg_to_rgb  db 'img_to_rgb',0 ;преобразование изображения в данные RGB
 	aimg_to_rgb2 db 'img_to_rgb2',0
 	aimg_decode  db 'img_decode',0 ;автоматически определяет формат графических данных
-	aimg_encode  db 'img_encode',0
-	aimg_create  db 'img_create',0
+;	aimg_encode  db 'img_encode',0
+;	aimg_create  db 'img_create',0
 	aimg_destroy db 'img_destroy',0
-	aimg_destroy_layer db 'img_destroy_layer',0
-	aimg_count   db 'img_count',0
-	aimg_lock_bits db 'img_lock_bits',0
-	aimg_unlock_bits db 'img_unlock_bits',0
-	aimg_flip    db 'img_flip',0
-	aimg_flip_layer db 'img_flip_layer',0
-	aimg_rotate  db 'img_rotate',0
-	aimg_rotate_layer db 'img_rotate_layer',0
-	aimg_draw    db 'img_draw',0
+;	aimg_destroy_layer db 'img_destroy_layer',0
+;	aimg_count   db 'img_count',0
+;	aimg_lock_bits db 'img_lock_bits',0
+;	aimg_unlock_bits db 'img_unlock_bits',0
+;	aimg_flip    db 'img_flip',0
+;	aimg_flip_layer db 'img_flip_layer',0
+;	aimg_rotate  db 'img_rotate',0
+;	aimg_rotate_layer db 'img_rotate_layer',0
+;	aimg_draw    db 'img_draw',0
+;	aimg_convert db 'img_convert',0
 
 ;--------------------------------------------------
 system_dir_0 db '/sys/lib/'
@@ -534,14 +530,6 @@ system_dir_1 db '/sys/lib/'
 lib_name_1 db 'buf2d.obj',0
 system_dir_2 db '/sys/lib/'
 lib_name_2 db 'libimg.obj',0
-err_msg_found_lib_0 db 'Sorry I cannot load library ',39,'tinygl.obj',39,0
-err_msg_found_lib_1 db 'Sorry I cannot load library ',39,'buf2d.obj',39,0
-err_msg_found_lib_2 db 'Sorry I cannot load library ',39,'libimg.obj',39,0
-head_f_i:
-head_f_l db 'System error',0
-err_msg_import_0 db 'Error on load import library ',39,'tinygl.obj',39,0
-err_msg_import_1 db 'Error on load import library ',39,'buf2d.obj',39,0
-err_msg_import_2 db 'Error on load import library ',39,'libimg.obj',39,0
 ;--------------------------------------------------
 
 txt_scale:
@@ -579,21 +567,26 @@ buf_1:
 
 align 4
 l_libs_start:
-	lib_0 l_libs lib_name_0, cur_dir_path, file_name,  system_dir_0,\
-		err_msg_found_lib_0, head_f_l, import_lib_tinygl,err_msg_import_0,head_f_i
-	lib_1 l_libs lib_name_1, cur_dir_path, file_name,  system_dir_1,\
-		err_msg_found_lib_1, head_f_l, import_buf2d,  err_msg_import_1,head_f_i
-	lib_2 l_libs lib_name_2, cur_dir_path, file_name, system_dir_2,\
-		err_msg_found_lib_2, head_f_l, import_libimg, err_msg_import_2, head_f_i
+	lib_0 l_libs lib_name_0, file_name, system_dir_0, import_tinygl
+	lib_1 l_libs lib_name_1, file_name, system_dir_1, import_buf2d
+	lib_2 l_libs lib_name_2, file_name, system_dir_2, import_libimg
 l_libs_end:
 
 align 4
 i_end:
+	ctx1 rb 28 ;sizeof.TinyGLContext = 28
+	image_data_toolbar dd 0
+	dr_figure dd 0
+	qObj dd 0
+	TexObj dd 0 ;массив указателей на текстуры (в данном случае 1 шт.)
+	texture dd 0 ;указатель на память с текстурой
+	text_w dd 0
+	text_h dd 0
 	run_file_70 FileInfoBlock
 	sc system_colors
 align 16
+	cur_dir_path rb 4096
+	file_name rb 4096
 	rb 4096
 stacktop:
-	cur_dir_path rb 4096
-	file_name rb 4096 
 mem:

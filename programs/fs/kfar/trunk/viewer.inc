@@ -49,14 +49,14 @@ view_file:
         jnz     @b
         jmp     .namecopied
 .frompanel:
-        mov     eax, dword [esi+panel1_hPlugin-panel1_dir]
+        mov     eax, dword [esi+panel1.hPlugin-panel1.dir]
         mov     [ebp+viewer_data.hPlugin], eax
         test    eax, eax
         jz      .nocopyhostname
         lea     edi, [ebp+viewer_data.hostname]
         push    esi
-        mov     eax, dword [esi+panel1_parents-panel1_dir]
-        mov     esi, dword [esi+panel1_parents_sz-panel1_dir]
+        mov     eax, dword [esi+panel1.parents-panel1.dir]
+        mov     esi, dword [esi+panel1.parents_sz-panel1.dir]
         add     esi, eax
 @@:
         dec     esi
@@ -71,7 +71,7 @@ view_file:
         jnz     @b
         pop     esi
 .nocopyhostname:
-        mov     eax, dword [esi+panel1_hFile-panel1_dir]
+        mov     eax, dword [esi+panel1.hFile-panel1.dir]
         mov     [ebp+viewer_data.hFile], eax
         lea     edi, [ebp+viewer_data.filename]
         push    edi
@@ -115,7 +115,7 @@ view_file:
         pop     ebp
         jmp     .attr_common
 .attr_native:
-        push    70
+        push    SF_FILE
         pop     eax
         int     40h
 .attr_common:
@@ -190,7 +190,7 @@ view_file:
         mov     ebx, eax
         jmp     .readok
 .read_native:
-        push    70
+        push    SF_FILE
         pop     eax
         int     40h
         mov     [ebp+viewer_data.buf_size], ebx
@@ -290,7 +290,7 @@ viewer_load_next:
         xor     ebx, ebx
         jmp     .readok
 .native:
-        push    70
+        push    SF_FILE
         pop     eax
         int     40h
         test    eax, eax
@@ -1204,7 +1204,7 @@ viewer_seek:
 @@:
         ret
 .native:
-        push    70
+        push    SF_FILE
         pop     eax
         int     40h
         test    eax, eax
@@ -1657,12 +1657,12 @@ viewer_OnKey:
         call    viewer_seek
         call    viewer_skip_unicode_marker
         mov     esi, tolower_table
-        test    [find_in_file_dlgdata.flags_case], 10h
+        test    [find_in_file_dlgdata.case.flags], 10h
         jz      @f
         mov     esi, identical_table
 @@:
         mov     ebx, SearchString
- 	test	[find_in_file_dlgdata.flags_whole], 10h
+ 	test	[find_in_file_dlgdata.whole.flags], 10h
 	setnz	al
 	push	eax
         push    dword [ebp+viewer_data.encoding]
@@ -1684,7 +1684,7 @@ viewer_OnKey:
         lea     ebx, [ebp+viewer_data.buf]
         add     ebx, [ebp+viewer_data.buf_size]
 @@:
-        test    [find_in_file_dlgdata.flags_whole], 10h
+        test    [find_in_file_dlgdata.whole.flags], 10h
         jz      .search_loop
         cmp     dword [ebp+viewer_data.buf_start], 0
         jnz     @f
@@ -1732,7 +1732,7 @@ viewer_OnKey:
         jmp     .search_loop
 .f7.notfoundt:
 ; last chance - if we are looking for a whole word, EOF is ok for last symbol
-        test    [find_in_file_dlgdata.flags_whole], 10h
+        test    [find_in_file_dlgdata.whole.flags], 10h
         jz      .f7.notfound
         movzx   edi, byte [edi+' ']
         inc     esi
@@ -1759,7 +1759,7 @@ viewer_OnKey:
         jnz     @f
         inc     edx
 @@:
-        test    [find_in_file_dlgdata.flags_whole], 10h
+        test    [find_in_file_dlgdata.whole.flags], 10h
         jz      @f
         sub     dword [ebp+viewer_data.selected_len], 2
         sbb     dword [ebp+viewer_data.selected_len+4], 0

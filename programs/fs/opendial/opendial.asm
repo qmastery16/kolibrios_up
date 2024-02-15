@@ -81,7 +81,8 @@ include '../../macros.inc'
 ;define __DEBUG__ 1
 ;define __DEBUG_LEVEL__ 1
 ;include '../../debug-fdo.inc'
-include '../../develop/libraries/box_lib/load_lib.mac'
+include '../../KOSfuncs.inc'
+include '../../load_lib.mac'
 include '../../develop/libraries/box_lib/trunk/box_lib.mac'
 ;include 'macros.inc'
 ;include 'load_lib.mac'
@@ -1965,8 +1966,22 @@ convert_icons:
 calc_ini:
 	mov	eax,[image_file]
 	mov	[file_browser_data_1.ini_file_start],eax
-	add	eax,[img_size]
-	mov	[file_browser_data_1.ini_file_end],eax
+
+	mov     edi,eax
+	add	edi,[img_size]
+	dec     edi
+	mov     esi,eax
+	add     esi,9 ; after [icons16]
+	cld
+@@:
+	lodsb
+	cmp     esi,edi
+	je      @f
+	cmp     al,byte '['
+	jne	@r
+	
+@@:
+	mov	[file_browser_data_1.ini_file_end],esi
 	ret
 ;---------------------------------------------------------------------
 load_ini:
@@ -2530,34 +2545,19 @@ system_dir_CnvPNG	db '/sys/lib/cnv_png.obj',0
 system_dir_Sort 	db '/sys/lib/sort.obj',0
 system_dir_UNPACK	db '/sys/lib/archiver.obj',0
 
-ihead_f_i:
-ihead_f_l	db 'System      error',0
-
-er_message_found_lib	db 'box_lib.obj - Not found!',0
-er_message_import	db 'box_lib.obj - Wrong import!',0
-
-er_message_found_lib2	db 'cnv_png.obj - Not found!',0
-er_message_import2	db 'cnv_png.obj - Wrong import!',0
-
-err_message_found_lib3	db 'sort.obj - Not found!',0
-err_message_import3	db 'sort.obj - Wrong import!',0
-
-err_message_found_lib4	db 'archiver.obj - Not found!',0
-err_message_import4	db 'archiver.obj - Wrong import!',0
-
 align	4
 l_libs_start:
-library01	l_libs	system_dir_Boxlib+9,path,file_name,system_dir_Boxlib,\
-er_message_found_lib,ihead_f_l,Box_lib_import,er_message_import,ihead_f_i,plugins_directory
+library01	l_libs	system_dir_Boxlib+9,file_name,system_dir_Boxlib,\
+Box_lib_import,plugins_directory
 
-library02	l_libs	system_dir_CnvPNG+9,path,file_name,system_dir_CnvPNG,\
-er_message_found_lib2,ihead_f_l,cnv_png_import,er_message_import2,ihead_f_i,plugins_directory
+library02	l_libs	system_dir_CnvPNG+9,file_name,system_dir_CnvPNG,\
+cnv_png_import,plugins_directory
 
-library03	l_libs	system_dir_Sort+9,path,file_name,system_dir_Sort,\
-err_message_found_lib3,ihead_f_l,Sort_import,err_message_import3,ihead_f_i,plugins_directory
+library03	l_libs	system_dir_Sort+9,file_name,system_dir_Sort,\
+Sort_import,plugins_directory
 
-library04	l_libs	system_dir_UNPACK+9,path,file_name,system_dir_UNPACK,\
-err_message_found_lib4,ihead_f_l,UNPACK_import,err_message_import4,ihead_f_i,plugins_directory
+library04	l_libs	system_dir_UNPACK+9,file_name,system_dir_UNPACK,\
+UNPACK_import,plugins_directory
 
 end_l_libs:
 
@@ -2676,7 +2676,7 @@ PathShow_draw		dd sz_PathShow_draw
 ;a_init 		db 'lib_init',0
 ;a_version		db 'version',0
 
-aEdit_box_draw		db 'edit_box',0
+aEdit_box_draw		db 'edit_box_draw',0
 aEdit_box_key		db 'edit_box_key',0
 aEdit_box_mouse 	db 'edit_box_mouse',0
 ;aVersion_ed		db 'version_ed',0
@@ -2865,7 +2865,7 @@ filter_flag	db 1
 focus_pointer	db 0
 ;---------------------------------------------------------------------
 start_pach:
-	db '/rd/1',0
+	db '/sys',0
 
 root_pach:
 	db '/',0
@@ -3188,10 +3188,7 @@ features_table:
 	db '1023b '
 ;---------------------------------------------------------------------
 .date_table:
-	db '00.00.00 00:00 '
-;---------------------------------------------------------------------
-.year_table:
-	db '    '
+	db '00.00.0000 00:00 '
 ;---------------------------------------------------------------------
 example_name_temp:	
 	db 'temp1.asm',0
@@ -3207,8 +3204,8 @@ app_colours:
 
 w_frame 		rd 1
 w_grab			rd 1
-w_work_3d_dark		rd 1
-w_work_3d_light	rd 1
+w_work_dark		rd 1
+w_work_light	rd 1
 w_grab_text		rd 1
 w_work			rd 1
 w_work_button		rd 1

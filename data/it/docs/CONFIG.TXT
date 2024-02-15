@@ -17,7 +17,7 @@ Tra parentesi vengono riportati i nomi degli eseguibili dei singoli programmi.
    come nuovo sfondo è possibile eliminare il file background.jpg
 
    b) Modificare all'interno del file autorun.dat la voce
-   "/RD/1/KIV \S__background.jpg" in "/rd/1/PIC4". È possibile
+   "/SYS/KIV \S__background.jpg" in "/sys/PIC4". È possibile
    eliminare il file  background.jpg e il nuovo sfondo sara una texture.
 
    Per i programmatori:
@@ -66,20 +66,20 @@ Tra parentesi vengono riportati i nomi degli eseguibili dei singoli programmi.
    nella cartella skins.
 
 6. Suono. //non trovo sis7012
-   I driver sound.obj, sono compatibili con le schede audio Intel ICH,
+   I driver sound.sys, sono compatibili con le schede audio Intel ICH,
    ICH0, ICH2, ICH3, ICH4, ICH5, ICH6, ICH7 e NVidia NForce, NForce 2,
    NForce 3, NForce 4.
    Se si ha una scheda audio compatibile con SB16, allora è necessario
-   rimuovere il file sound.obj dal ram Disk e rinominare il file sb16.obj
-   dalla cartella 'drivers' in sound.obj.
-   Se si ha una scheda audio sis7012, è necessario rinominare il file sis.obj
+   rimuovere il file sound.sys dal ram Disk e rinominare il file sb16.sys
+   dalla cartella 'drivers' in sound.sys.
+   Se si ha una scheda audio sis7012, è necessario rinominare il file sis.sys
    dalla cartella radice del floppy, e copiarlo nella cartella driver nella ram,
    sostituendo il vecchio file.
-   Il driver fm801.obj serve per le schede audio ForceMedia FM801, il
-   driver vt8235.obj per i chipset VIA e i driver emu10k1x.obj per gli
+   Il driver fm801.sys serve per le schede audio ForceMedia FM801, il
+   driver vt8235.sys per i chipset VIA e i driver emu10k1x.sys per gli
    audioprocessori EMU10K1X. La loro inizializzazione è analoga quella del
    file sis7012, è necessario copiarli nella cartella drivers, rinominadoli
-   in sis.obj e rimuovendo il vecchio file.
+   in sis.sys e rimuovendo il vecchio file.
 
 7. Bus Disconnect.
    La applicazione KBD (Kolibri Bus Disconnect), permette di disconnettere
@@ -87,12 +87,12 @@ Tra parentesi vengono riportati i nomi degli eseguibili dei singoli programmi.
    collaterale è del rumore nei codec AC97. L'applicazione può essere
    caricata automaticamente all'avvio del sistema, in tal caso è necessario
    aggiungere la voce
-"/RD/1/KBD             BOOT       20    # Enable Bus Disconnect for AMD K7 processors".
+"/SYS/KBD             BOOT       20    # Enable Bus Disconnect for AMD K7 processors".
    al file autorun.dat
 
 8. Impostazioni Network.
    le impostazioni iniziali sono lette durante l'avvio del sistema dal file
-   /rd/1/network/zeroconf.ini.
+   /sys/network/zeroconf.ini.
    È possibile impostare il rivelamento automatico con DHCP ("type=zeroconf")
    oppure impostare un indirizzo IP fissato ("type=static").
 
@@ -105,7 +105,7 @@ Tra parentesi vengono riportati i nomi degli eseguibili dei singoli programmi.
    Per impostare i parametri durante l'avvio è necessario passare tramite
    il file AUTORUN.DAT l'argomento -m<larghezza>x<altezza>x<refresh> al
    driver ATIKMS, ad esempio
-/RD/1/DRIVERS/ATIKMS -m1024x768x60 -1
+/SYS/DRIVERS/ATIKMS -m1024x768x60 -1
    Attenzione al fatto che il formato autorun.dat non accetta spazi,
    quindi non è possibile inserire ulteriori argomenti.
    Si può inoltre disabilitare la possibilità di modificare i parametri durante l'avvio passando l'opzione -n. I driver supportano comunque il cursore hardware. Per disabilitare completamente il driver è sufficiente rimuovere la relativa voce dal file autorun.dat.

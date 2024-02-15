@@ -1,34 +1,9 @@
-; kpack = Kolibri Packer
-;---------------------------------------------------------------------
-; version:	0.20
-; last update:  08/18/2011
-; changed by:   Marat Zakiyanov aka Mario79, aka Mario
-; changes:      Checking for "rolled up" window
-;---------------------------------------------------------------------
-; version:	0.20
-; last update:  07/12/2010
-; changed by:   Marat Zakiyanov aka Mario79, aka Mario
-; changes:      Added code for packing the kernel.mnt
-;---------------------------------------------------------------------
-; version:	0.15
-; last update:  06/11/2010
-; changed by:   Marat Zakiyanov aka Mario79, aka Mario
-; changes:      1) Window Y=4, B=1
-;               2) Refresh lenght of data after Editbox editing
-;               3) Changed format of start parameter -
-;                    longer path (total length 255 + zero).
-;---------------------------------------------------------------------
-; version:	0.14
-; last update:  03/11/2010
-; changed by:   Marat Zakiyanov aka Mario79, aka Mario
-; changes:      select path with OpenDialog,
-;               using Box_Lib and Proc_Lib
 ;---------------------------------------------------------------------
 ; Kpack - Kolibri Packer
 ; Kolibri version
 ; Written by diamond in 2006, 2007 specially for KolibriOS
 ;
-; Disassemled and corrected in 2010 specially for FASM
+; Disassemled and corrected in 2010-2011 specially for FASM
 ;            by Marat Zakiyanov aka Mario79, aka Mario
 ;
 ; Uses LZMA compression library by Igor Pavlov
@@ -48,25 +23,45 @@ use32
 	dd cur_dir_path
 ;---------------------------------------------------------------------
 include '../../../config.inc'		;for nightbuild
+include '../../../KOSfuncs.inc'
 include '../../../macros.inc'
+include '../../../gui_patterns.inc'
 include '../../../develop/libraries/box_lib/trunk/box_lib.mac'
-include '../../../develop/libraries/box_lib/load_lib.mac'
+include '../../../load_lib.mac'
   @use_library
 
 START:
-	mcall	68,11
-	mcall	40,0x80000027
+	mcall	SF_SYS_MISC,SSF_HEAP_INIT
+	mcall	SF_SET_EVENTS_MASK,0x80000027
 
-load_libraries l_libs_start,load_lib_end
+	load_libraries l_libs_start,load_lib_end
 	cmp eax,-1
 	je exit
 
 	init_checkboxes2 check1,check1_end
-	;push	check1
-	;call	[init_checkbox]
-
 	call	clear_messages
-; set default path = /RD/1/
+
+; pack kernel ?
+	cmp	[params], dword '-ker'
+	jne @f
+
+	mov	esi,kernel_name
+	mov	edi,inname
+	call	copy_1
+
+	mov	esi,kernel_name
+	mov	edi,outname
+	call	copy_1
+	
+	mov	esi,defpath
+	mov	edi,path
+	call	copy_1
+
+	call	pack
+	jmp exit
+
+@@:
+; set default path = /SYS/
 	mov	esi,defpath
 	mov	edi,path
 	mov	[edi-4],dword 6
@@ -97,8 +92,9 @@ load_libraries l_libs_start,load_lib_end
 	pop	esi
 	mov	edi,outname
 	call	copy_1
+end_param:
 ;---------------------------------------------------------------------
-	call	set_editbox_position_all
+	call set_editbox_position_all
 ;---------------------------------------------------------------------
 	call	draw_window
 	call	pack
@@ -135,7 +131,7 @@ red:
 	call	draw_window
 ;--------------------------------------
 still:
-	mcall	10
+	mcall	SF_WAIT_EVENT
 	dec	eax
 	jz	red
 
@@ -187,11 +183,11 @@ clear_messages:
 exit:
 	xor	eax,eax
 	dec	eax
-	mcall
+	mcall	;SF_TERMINATE_PROCESS
 ;*********************************************************************
 button:
 ; button pressed
-	mcall	17
+	mcall	SF_GET_BUTTON
 	xchg	al,ah
 	cmp	al,7
 	jz	but7
@@ -323,7 +319,7 @@ set_editbox_position_all:
 	ret
 ;*********************************************************************
 key:
-	mcall	2
+	mcall	SF_GET_KEY
 
 	push	dword edit1
 	call	[edit_box_key]
@@ -397,10 +393,10 @@ newline:
 x2:
 	mov	[message_cur_pos],edx
 ; update window
-	mcall	13,<6,414>,<54,222>,[color_table+20]
+	call draw_log_area
 ;--------------------------------------
 draw_messages:
-	mov	ebx,12 shl 16+60
+	mov	ebx,12 shl 16 + LOG_Y + 7
 	mov	edi,message_mem
 ;--------------------------------------
 @@:
@@ -413,54 +409,56 @@ draw_messages:
 	neg	ecx
 	mov	esi,ecx
 	pop	edi
-	mcall	4,,[color_table+32],edi
-	add	ebx,10
+	mcall	SF_DRAW_TEXT,,0xB0000000,edi
+	add	ebx,16
 	add	edi,80
 	cmp	edi,message_cur_pos
 	jb	@b
 
 	ret
 ;*********************************************************************
+draw_log_area:
+	DrawRectangle 5, LOG_Y, WIN_W-12, LOG_H, [sc.work_graph]
+	mcall	SF_DRAW_RECT, <6,WIN_W-13>, <LOG_Y+1,LOG_H-1>, 0xFFFfff
+	DrawRectangle3D 6, LOG_Y+1, WIN_W-13, LOG_H-1, 0xDEDEDE, [sc.work_graph] 
+	ret
+;*********************************************************************
 draw_window:
 ; start redraw
-	mcall	12,1
-	
-	mcall	48,3,color_table,40
-;--------------------------------------
-edit_boxes_set_sys_color edit1,editboxes_end,color_table
-check_boxes_set_sys_color2 check1,check1_end,color_table
-;--------------------------------------
+	mcall	SF_REDRAW,SSF_BEGIN_DRAW	
+	mcall	SF_STYLE_SETTINGS,SSF_GET_COLORS,sc,40
+	;--------------------------------------
+	edit_boxes_set_sys_color edit1,editboxes_end,sc
+	check_boxes_set_sys_color2 check1,check1_end,sc
+	;--------------------------------------
 ; define window
-	xor	eax,eax
-	mov	ecx,100 shl 16+306
-	mov	edx,[color_table.work]
+	mcall	SF_STYLE_SETTINGS,SSF_GET_SKIN_HEIGHT
+
+	mov	ecx,100 shl 16 + WIN_H
+	add ecx, eax
+	
+	mov	edx,[sc.work]
 	add	edx,34000000h
 	xor	esi,esi
 	xor	edi,edi
-	mcall	,<100,436>,,,,caption_str
-	mcall	9,procinfo,-1
+	mcall	SF_CREATE_WINDOW,<250,WIN_W+10>,,,,caption_str
+	mcall	SF_THREAD_INFO,procinfo,-1
 	
 	mov	eax,[procinfo+70] ;status of window
 	test	eax,100b
 	jne	.end	
 ;--------------------------------------
 ; draw lines and frame
-	call	draw_lines
+	call    draw_log_area
 ; draw buttons
 	call	draw_buttons
 ; draw messages
 	call	draw_messages
 ; draw editbox's
-	mov	eax,[procinfo+42]
-	sub	eax,65+72+10
-	mov	[edit1.width],eax
-	mov	[edit2.width],eax
-	mov	[edit3.width],eax
-
 	call	draw_editbox
 ; end redraw
 .end:
-	mcall	12,2
+	mcall	SF_REDRAW,SSF_END_DRAW
 	ret
 ;*********************************************************************
 draw_editbox:
@@ -473,6 +471,9 @@ draw_editbox:
 	push	dword edit3
 	call	[edit_box_draw]
 	
+	mov eax,[sc.work_text]
+	or eax, 0x90000000
+	mov	[check1.text_color], eax
 	push	dword check1
 	call	[check_box_draw]
 	ret
@@ -491,64 +492,52 @@ set_editbox_position:
 	mov	[edi+52], eax  ;ed_pos
 	ret
 ;*********************************************************************
-draw_lines:
-	mov	ecx,2 shl 16+12*3
-; draw frame for messages data
-	push	ecx
-	add	ecx,50 shl 16+16
-	mcall	38,<3,423>,,[color_table.work_graph]
-	add	ecx,224*(1 shl 16+1)
-	mcall
-	sub	cx,224
-	mcall	,<3,3>
-	mcall	,<423,423>
-	pop	ecx
-	ret
-;*********************************************************************
 draw_buttons:
 ; define compress button
 	mov	cx,18
-	mcall	8,<351,73>,<1, 17>,2,[color_table.work_button]
+	mcall	SF_DEFINE_BUTTON,<WIN_W - RIGHT_BTN_W - 5, RIGHT_BTN_W>, <3, 20>,2,[sc.work_button]
 ; uncompress button
-	add	ecx,18 shl 16
 	inc	edx
+	add	ecx,LINE_H shl 16
 	mcall
-	;add	ecx,-12h+0Ch+140000h
-	mov	ecx, 38 shl 16 + 11
 ; question button
 	push	esi
 	mov	dl,7
-	mcall	,<413,11>
-	shr	ecx,16
-	lea	ebx,[ecx+1A00002h]
-	mcall	4,,[color_table.work_button_text],aQuestion,1
+	mcall	,<WIN_W-25,18>,<LINE_H*2+3,18>
+	mov ecx,[sc.work_button_text]
+	or  ecx,0x90000000
+	mov edx,aQuestion
+	mcall	SF_DRAW_TEXT,<WIN_W-19, LINE_H*2+5>
 	pop	esi
-; define settings buttons
-	mov	ecx,16*2+2
-	shl	ecx,16
-	mov	cx,13
-	mcall	8,<6,50>,,4
-; text on settings buttons
+; define Path button
+	mcall	SF_DEFINE_BUTTON,<6,64>,<LINE_H*2+3,20>,4
+; text on Path button
 	mov	ebx,8 shl 16+5
 	mov	al,4
-	mov	ecx,[color_table.work_text]
+	mov	ecx,[sc.work_text]
 	push	buttons1names
 	pop	edx
 	push	8
 	pop	esi
 ;--------------------------------------
+; text on settings buttons
+	mov ecx, [sc.work_text]
+	or ecx, 0x10000000
+	mcall	, <8, 5>, , buttons1names, 8
+
+	add	edx,esi
+	add	ebx,LINE_H
 	mcall
 	add	edx,esi
-	add	ebx,16
-	mcall
-	add	edx,esi
-	add	ebx,16
-	mov	ecx,[color_table.work_button_text]
+	add	ebx,LINE_H
+	mov	ecx,[sc.work_button_text]
+	or ecx, 0x10000000
+	sub ebx, 10 shl 16
 	mcall
 ; text on compress and decompress buttons
 	or	ecx,0x80000000
-	mcall	,<364,6>,,aCompress
-	mcall	,<359,24>,,aDecompress
+	mcall	,<WIN_W - RIGHT_BTN_W+7,6>,,aCompress
+	mcall	,<WIN_W - RIGHT_BTN_W+7,LINE_H+6>,,aDecompress
 	ret
 ;*********************************************************************
 ;Pack procedures

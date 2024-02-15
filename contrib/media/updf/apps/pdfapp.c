@@ -1,7 +1,7 @@
 #include "fitz.h"
 #include "mupdf.h"
-#include "muxps.h"
 #include "pdfapp.h"
+#include "kolibri.h"
 
 #include <ctype.h> /* for tolower() */
 
@@ -15,6 +15,7 @@ enum panning
 	PAN_TO_BOTTOM
 };
 
+void DrawPageSides(void);
 static void pdfapp_showpage(pdfapp_t *app, int loadpage, int drawpage, int repaint);
 
 static void pdfapp_warn(pdfapp_t *app, const char *fmt, ...)
@@ -66,7 +67,8 @@ char *pdfapp_usage(pdfapp_t *app)
 		"n\t\t-- find next search result\n"
 		"N\t\t-- find previous search result\n"
 		"c\t\t-- toggle between color and grayscale\n"
-	; */
+	;
+	*/
 }
 
 void pdfapp_init(pdfapp_t *app)
@@ -109,12 +111,12 @@ static void pdfapp_open_pdf(pdfapp_t *app, char *filename, int fd)
 	/*
 	 * Open PDF and load xref table
 	 */
-__menuet__debug_out("FZ OPEN\n");
+kol_board_puts("FZ OPEN\n");
 	//file = fz_open_fd(fd);
-	__menuet__debug_out("FZ ready\n");
+	kol_board_puts("FZ ready\n");
 	error = pdf_open_xref(&app->xref, filename, NULL);
 	if (error){
-	__menuet__debug_out("FZ can't open\n");
+	kol_board_puts("FZ can't open\n");
 		pdfapp_error(app, fz_rethrow(error, "cannot open document '%s'", filename));}
 	fz_close(file);
 
@@ -160,40 +162,21 @@ __menuet__debug_out("FZ OPEN\n");
 	/*
 	 * Start at first page
 	 */
-	 __menuet__debug_out("Start at first page\n");
+	 kol_board_puts("Start at first page\n");
 
 	error = pdf_load_page_tree(app->xref);
 	if (error) {
-		__menuet__debug_out("Can't load tree\n");
+		kol_board_puts("Can't load tree\n");
 		pdfapp_error(app, fz_rethrow(error, "cannot load page tree"));}
 
-__menuet__debug_out("Page counter\n");
+kol_board_puts("Page counter\n");
 	app->pagecount = pdf_count_pages(app->xref);
-	__menuet__debug_out("All is set!\n");
-}
-
-static void pdfapp_open_xps(pdfapp_t *app, char *filename, int fd)
-{
-	fz_error error;
-	fz_stream *file;
-
-	file = fz_open_fd(fd);
-	error = xps_open_stream(&app->xps, file);
-	if (error)
-		pdfapp_error(app, fz_rethrow(error, "cannot open document '%s'", filename));
-	fz_close(file);
-
-	app->doctitle = filename;
-
-	app->pagecount = xps_count_pages(app->xps);
+	kol_board_puts("All is set!\n");
 }
 
 void pdfapp_open(pdfapp_t *app, char *filename, int fd, int reload)
 {
-	if (strstr(filename, ".xps") || strstr(filename, ".XPS") || strstr(filename, ".rels"))
-		pdfapp_open_xps(app, filename, fd);
-	else
-		pdfapp_open_pdf(app, filename, fd);
+	pdfapp_open_pdf(app, filename, fd);
 
 	app->cache = fz_new_glyph_cache();
 
@@ -239,12 +222,6 @@ void pdfapp_close(pdfapp_t *app)
 
 		pdf_free_xref(app->xref);
 		app->xref = NULL;
-	}
-
-	if (app->xps)
-	{
-		xps_free_context(app->xps);
-		app->xps = NULL;
 	}
 
 	fz_flush_warnings();
@@ -333,34 +310,6 @@ static void pdfapp_loadpage_pdf(pdfapp_t *app)
 	pdf_age_store(app->xref->store, 3);
 }
 
-static void pdfapp_loadpage_xps(pdfapp_t *app)
-{
-	xps_page *page;
-	fz_device *mdev;
-	fz_error error;
-
-	error = xps_load_page(&page, app->xps, app->pageno - 1);
-	if (error)
-		pdfapp_error(app, fz_rethrow(error, "cannot load page %d in file '%s'", app->pageno, app->doctitle));
-
-	app->page_bbox.x0 = 0;
-	app->page_bbox.y0 = 0;
-	app->page_bbox.x1 = page->width;
-	app->page_bbox.y1 = page->height;
-	app->page_rotate = 0;
-	app->page_links = NULL;
-
-	/* Create display list */
-	app->page_list = fz_new_display_list();
-	mdev = fz_new_list_device(app->page_list);
-	app->xps->dev = mdev;
-	xps_parse_fixed_page(app->xps, fz_identity, page);
-	app->xps->dev = NULL;
-	fz_free_device(mdev);
-
-	xps_free_page(app->xps, page);
-}
-
 static void pdfapp_showpage(pdfapp_t *app, int loadpage, int drawpage, int repaint)
 {
 	char buf[256];
@@ -383,8 +332,6 @@ static void pdfapp_showpage(pdfapp_t *app, int loadpage, int drawpage, int repai
 
 		if (app->xref)
 			pdfapp_loadpage_pdf(app);
-		if (app->xps)
-			pdfapp_loadpage_xps(app);
 
 		/* Zero search hit position */
 		app->hit = -1;
@@ -399,9 +346,9 @@ static void pdfapp_showpage(pdfapp_t *app, int loadpage, int drawpage, int repai
 
 	if (drawpage)
 	{
-		// sprintf(buf, "%s - %d/%d (%d dpi)", app->doctitle,
-		// 		app->pageno, app->pagecount, app->resolution);
-		// wintitle(app, buf);
+		sprintf(buf, "%s - %d/%d (%d dpi)", app->doctitle,
+				app->pageno, app->pagecount, app->resolution);
+		/// wintitle(app, buf);
 
 		ctm = pdfapp_viewctm(app);
 		bbox = fz_round_rect(fz_transform_rect(ctm, app->page_bbox));
@@ -412,11 +359,15 @@ static void pdfapp_showpage(pdfapp_t *app, int loadpage, int drawpage, int repai
 		if (app->grayscale)
 			colorspace = fz_device_gray;
 		else
-//#ifdef _WIN32
+/*
+#ifdef _WIN32
 			colorspace = fz_device_bgr;
-//#else
-	//		colorspace = fz_device_rgb;
-//#endif
+#else
+			colorspace = fz_device_rgb;
+#endif
+*/
+			colorspace = fz_device_bgr;
+		
 		app->image = fz_new_pixmap_with_rect(colorspace, bbox);
 		fz_clear_pixmap_with_color(app->image, 255);
 		idev = fz_new_draw_device(app->cache, app->image);
@@ -425,12 +376,12 @@ static void pdfapp_showpage(pdfapp_t *app, int loadpage, int drawpage, int repai
 	}
 
 	if (repaint)
-	{
+	{		
 		pdfapp_panview(app, app->panx, app->pany);
 
 		if (app->shrinkwrap)
 		{
-			//__menuet__debug_out ("SHRINK\n");
+			kol_board_puts ("SHRINK\n");
 			int w = app->image->w;
 			int h = app->image->h;
 			if (app->winw == w)
@@ -451,6 +402,8 @@ static void pdfapp_showpage(pdfapp_t *app, int loadpage, int drawpage, int repai
 	}
 
 	fz_flush_warnings();
+	
+	DrawPageSides();
 }
 
 static void pdfapp_gotouri(pdfapp_t *app, fz_obj *uri)

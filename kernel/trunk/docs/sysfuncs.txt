@@ -1,6 +1,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                              ;;
-;; Copyright (C) KolibriOS team 2004-2016. All rights reserved. ;;
+;; Copyright (C) KolibriOS team 2004-2021. All rights reserved. ;;
 ;; Distributed under terms of the GNU General Public License    ;;
 ;;                                                              ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -71,7 +71,7 @@ Remarks:
     in ebx,ecx. The coordinates are resulted concerning
     the left upper corner of the window, which, thus, is set as (0,0),
     coordinates of the right lower corner essence (xsize,ysize).
-  * The sizes of the window are understood in sence of coordinates
+  * The sizes of the window are understood in sense of coordinates
     of the right lower corner. This concerns all other functions too.
     It means, that the real sizes are on 1 pixel more.
   * The window of style Y=1 looks as follows:
@@ -146,7 +146,7 @@ Remarks:
     which can be set by subfunction 2 of function 21
     and get by subfunction 2 of function 26.
   * As a consequence, ASCII-codes take into account current
-    keyboard layout (rus/en) as opposed to scancodes.
+    keyboard layout (en, fi, etc) as opposed to scancodes.
   * This function notifies only about those hotkeys, which were
     defined by this thread by subfunction 4 of function 66.
 
@@ -283,6 +283,9 @@ Parameters:
     ecx = -1 - get information on the current thread
 Returned value:
   * eax = maximum number of the slot of a thread
+    but if pointer in ebx is illegal, for example,
+    [ebx, ebx + 0x4C) region intersects with kernel memory,
+    then function returns -1
   * buffer pointed to by ebx contains the following information:
     * +0: dword: usage of the processor (how many time units
       per second leaves on execution of this thread)
@@ -341,7 +344,7 @@ Remarks:
   * Slot 1 corresponds to special system thread, for which:
     * the window is in the bottom of the window stack, the fields
       +4 and +6 contain value 1
-    * name of the process - "OS/IDLE" (supplemented by spaces)
+    * name of the process - "IDLE" (supplemented by spaces)
     * address of the process in memory is 0, size of used memory is
       16 Mb (0x1000000)
     * PID=1
@@ -351,7 +354,8 @@ Remarks:
     * the execution time adds of time leaving on operations itself
       and idle time in waiting for interrupt (which can be got by call
       to subfunction 4 of function 18).
-  * Beginning from slot 2, the normal applications are placed.
+  * Slot 2 (and some others) correspond to system threads, for which:
+    * name of the thread - "OS" (supplemented by spaces)
   * The normal applications are placed in memory at the address
     0 (kernel constant 'std_application_base_address').
     There is no intersection, as each process has its own page table.
@@ -946,6 +950,14 @@ Parameters:
     the information will be placed
 Returned value:
   * function does not return value
+    but if pointer in ecx is illegal, for example,
+    [ecx, ecx + 9) region intersects with kernel memory,
+    then function returns -1
+Remarks:
+  * At the moment only the part of the buffer by a size
+    9 bytes is used. Nevertheless it is recommended to use
+    16 byte buffer for the future compatibility, in the future
+    some fields can be added.
 Structure of the buffer:
 db a,b,c,d for version a.b.c.d
 db 0: reserved
@@ -1018,7 +1030,7 @@ Returned value:
 Parameters:
   * eax = 18 - function number
   * ebx = 18 - subfunction number
-  * ecx = identifer of process/thread (PID/TID)
+  * ecx = identifier of process/thread (PID/TID)
 Returned value:
   * eax = 0 - success
   * eax = -1 - error (process is not found or is system)
@@ -1131,7 +1143,7 @@ Parameters:
   * ecx = pointer to the buffer for information (36 bytes)
 Returned value:
   * eax = total size of existing RAM in pages
-    or -1 if error has occured
+    or -1 if error has occurred
   * buffer pointed to by ecx contains the following information:
     * +0:  dword: total size of existing RAM in pages
     * +4:  dword: size of free RAM in pages
@@ -1156,7 +1168,7 @@ Returned value:
 Parameters:
   * eax = 18 - function number
   * ebx = 21 - subfunction number
-  * ecx = identifer of process/thread (PID/TID)
+  * ecx = identifier of process/thread (PID/TID)
 Returned value:
   * eax = 0 - error (invalid identifier)
   * otherwise eax = slot number
@@ -1318,10 +1330,11 @@ Parameters:
   * edx = pointer to layout - table of length 128 bytes
 Or:
   * ecx = 9
-  * dx = country identifier (1=eng, 2=fi, 3=ger, 4=rus)
+  * edx = language id: 1=en, 2=fi, 3=ge, 4=ru, 5=fr, 6=et, 7=ua, 8=it,
+                       9=be, 10=sp, 11=ca
 Returned value:
   * eax = 0 - success
-  * eax = 1 - incorrect parameter
+  * eax = -1 - incorrect parameter
 Remarks:
   * If Alt is pressed, the layout with Alt is used;
     if Alt is not pressed, but Shift is pressed,
@@ -1345,7 +1358,8 @@ Remarks:
 Parameters:
   * eax = 21 - function number
   * ebx = 5 - subfunction number
-  * ecx = system language (1=eng, 2=fi, 3=ger, 4=rus)
+  * ecx = language id: 1=en, 2=fi, 3=ge, 4=ru, 5=fr, 6=et, 7=ua, 8=it,
+                       9=be, 10=sp, 11=ca
 Returned value:
   * eax = 0
 Remarks:
@@ -1503,7 +1517,7 @@ Remarks:
 ======================================================================
 ======= Function 25 - put image area on the background layer. ========
 ======================================================================
-Paramters:
+Parameters:
   * eax = 25 - function number
   * ebx = pointer to the previously allocated memory area,
         where placed the source images in a format BBGGRRTTBBGGRRTT...
@@ -1552,12 +1566,16 @@ Parameters:
     copied
 Returned value:
   * function does not return value
+    but if pointer in edx is illegal, for example,
+    [edx, edx + 128) region intersects with kernel memory,
+    then function returns -1
 Or:
   * eax = 26 - function number
   * ebx = 2 - subfunction number
   * ecx = 9
 Returned value:
-  * eax = country identifier (1=eng, 2=fi, 3=ger, 4=rus)
+  * eax = language id: 1=en, 2=fi, 3=ge, 4=ru, 5=fr, 6=et, 7=ua, 8=it,
+                       9=be, 10=sp, 11=ca
 Remarks:
   * If Alt is pressed, the layout with Alt is used;
     if Alt is not pressed, but Shift is pressed,
@@ -1582,7 +1600,8 @@ Parameters:
   * eax = 26 - function number
   * ebx = 5 - subfunction number
 Returned value:
-  * eax = system language (1=eng, 2=fi, 3=ger, 4=rus)
+  * eax = language id: 1=en, 2=fi, 3=ge, 4=ru, 5=fr, 6=et, 7=ua, 8=it,
+                       9=be, 10=sp, 11=ca
 Remarks:
   * System language is global system variable and is not used
     by the kernel itself, however application @taskbar draws the
@@ -1697,7 +1716,7 @@ Returned value:
 Remarks:
   * If the buffer is too small to hold all path, only part of the string
     will be copied and terminated with 0.
-  * By default, current folder for the thread is "/rd/1".
+  * By default, current folder for the thread is "/sys".
   * At process/thread creation the current folder will be inherited
     from the parent.
 ----------------------------------------------------------------------
@@ -1741,7 +1760,7 @@ Returned value:
 Remarks:
   * If the buffer is too small to hold all path, only part of the string
     will be copied and terminated with 0.
-  * By default, current folder for the thread is "/rd/1".
+  * By default, current folder for the thread is "/sys".
   * At process/thread creation the current folder will be inherited
     from the parent.
 
@@ -1804,7 +1823,7 @@ Remarks:
 =================== Function 37 - work with mouse. ===================
 ======================================================================
 
----------- Subfunction 0 - screen coordinates of the mouse -----------
+-------- Subfunction 0 - get screen coordinates of the mouse ---------
 Parameters:
   * eax = 37 - function number
   * ebx = 0 - subfunction number
@@ -1827,14 +1846,14 @@ Remarks:
     contains relative y-coordinate, and to the high word
     1 should be added.
 
-------------- Subfunction 2 - states of the mouse buttons ------------
+----------- Subfunction 2 - get states of the mouse buttons ----------
 Parameters:
   * eax = 37 - function number
   * ebx = 2 - subfunction number
 Returned value:
   * eax = bits 0-4 equal to subfunction 3
 
-------- Subfunction 3 - states and events of the mouse buttons -------
+----- Subfunction 3 - get states and events of the mouse buttons -----
 Parameters:
   * eax = 37 - function number
   * ebx = 3 - subfunction number
@@ -1859,7 +1878,7 @@ events:
   * bit 17 is set = right button is released
   * bit 18 is set = middle button is released
 
-  * bit 23 is set = horisontal scroll is used
+  * bit 23 is set = horizontal scroll is used
 
   * bit 24 is set = doubleclick by left button
 
@@ -1927,7 +1946,8 @@ Parameters:
   * eax = 37 - function number
   * ebx = 8 - subfunction number
   * ecx = pointer to the cursor file path string
-  * edx = string encoding, details can be found in function 80 description.
+  * edx = string encoding, details can be found in function 80
+          description.
 Returned value:
   * eax = cursor handle, 0 - failed
 
@@ -1991,6 +2011,24 @@ Remarks:
     subfunction 2 of function 15.
 
 ---------------------- Constants for registers: ----------------------
+  eax - SF_BACKGROUND_GET_RECT (39)
+======================================================================
+== Function 39, subfunction 3 - get rect from the background image.  =
+======================================================================
+Parameters:
+  * eax = 39 - function number
+  * ebx = 3 - subfunction number
+  * ecx = [x]*65536 + [y]
+  * edx = [width]*65536 + [height]
+  * esi = buffer address
+Returned value:
+  * eax = 0 - success
+  * eax = -1 - error
+Remarks:
+  * Function copies specified rectangle of background image to buffer
+    in 0x00RRGGBB format
+
+---------------------- Constants for registers: ----------------------
   eax - SF_BACKGROUND_GET (39)
 ======================================================================
 == Function 39, subfunction 4 - get drawing mode for the background. =
@@ -2027,7 +2065,7 @@ Parameters:
 Returned value:
   * eax = previous value of mask
 Remarks:
-  * Default mask (7=111b) enables nofices about redraw,
+  * Default mask (7=111b) enables notices about redraw,
     keys and buttons. This is enough for many applications.
   * Events prohibited in the mask are saved anyway, when come;
     they are simply not informed with event functions.
@@ -2216,18 +2254,19 @@ Returned value:
   * function does not return value
 Format of the color table:
 each item is dword-value for color 0x00RRGGBB
-  * +0: dword: frames - color of frame
-  * +4: dword: grab - color of header
-  * +8: dword: grab_button - color of button on header bar
-  * +12 = +0xC: dword: grab_button_text - color of text on button
-    on header bar
+  * +0: dword: none - reserved
+  * +4: dword: none - reserved
+  * +8: dword: work_dark - dark color of working area 
+    used to give a user 3D-like feelings about interface elements
+  * +12 = +0xC: dword: work_light - light color of working area 
+    used to give a user 3D-like feelings about interface elements
   * +16 = +0x10: dword: grab_text - color of text on header
   * +20 = +0x14: dword: work - color of working area
-  * +24 = +0x18: dword: work_button - color of button in working area
-  * +28 = +0x1C: dword: work_button_text - color of text on button
+  * +24 = +0x18: dword: button - color of button in working area
+  * +28 = +0x1C: dword: button_text - color of text on button
     in working area
   * +32 = +0x20: dword: work_text - color of text in working area
-  * +36 = +0x24: dword: work_graph - color of graphics in working area
+  * +36 = +0x24: dword: graph - color of graphics in working area
 Remarks:
   * Structure of the color table is described in the standard
     include file 'macros.inc' as 'system_colors'; for example,
@@ -2236,8 +2275,8 @@ Remarks:
         ...                             ; somewhere one must call
                                         ; this function with ecx=sc
         mov     ecx, [sc.work_button_text]      ; read text color on
-                                        ; buttin in working area
-  * A program itself desides to use or not to use color table.
+                                        ; button in working area
+  * A program itself decides to use or not to use color table.
     For usage program must simply at calls to drawing functions select
     color taken from the table.
   * At change of the table of standard colors (by subfunction 2 with
@@ -2284,7 +2323,7 @@ Remarks:
   * (left,top) are coordinates of the left upper corner,
     (right,bottom) are coordinates of the right lower one.
     Thus the size of working area on x axis can be calculated by
-    formula right-left+1, on y axis - by formula bottom-right+1.
+    formula right-left+1, on y axis - by formula bottom-top+1.
   * See also function 14,
     to get sizes of all screen.
   * There is a pair function to set working area - subfunction 6.
@@ -2397,7 +2436,7 @@ Parameters:
 ======================================================================
 Parameters:
   * eax = 48 - function number
-  * ebx = 9 - subfunction number
+  * ebx = 11 - subfunction number
 Returned value:
   * eax = current font height in pixels
 
@@ -2409,7 +2448,7 @@ Returned value:
 ======================================================================
 Parameters:
   * eax = 48 - function number
-  * ebx = 10 - subfunction number
+  * ebx = 12 - subfunction number
   * cl  = new font height in pixels
 
 ---------------------- Constants for registers: ----------------------
@@ -2877,7 +2916,7 @@ Parameters:
     fff = function number of device
   * cl = number of register (must be even for bl=9,
     divisible by 4 for bl=10)
-  * dl/dx/edx (depending on requested size) contatins
+  * dl/dx/edx (depending on requested size) contains
     the data to write
 Returned value:
   * eax = -1 - error (access to PCI is disabled or parameters
@@ -3076,7 +3115,7 @@ Parameters:
     * X - similar for LAlt and RAlt
 Returned value:
   * eax=0 - success
-  * eax=1 - too mant hotkeys (maximum 256 are allowed)
+  * eax=1 - too many hotkeys (maximum 256 are allowed)
 Remarks:
   * Hotkey can work either at pressing or at release. Release
     scancode of a key is more on 128 than pressing scancode
@@ -3348,7 +3387,7 @@ Remarks:
   * Driver name is case-sensitive.
     Maximum length of the name is 16 characters, including
     terminating null character, the rest is ignored.
-  * Driver ABC is loaded from file /rd/1/drivers/ABC.obj.
+  * Driver ABC is loaded from file /sys/drivers/ABC.sys.
 
 ---------------------- Constants for registers: ----------------------
   eax - SF_SYS_MISC (68)
@@ -3471,7 +3510,7 @@ Parameters:
     * SHM_READ        = 0x00 - only read access
     * SHM_WRITE       = 0x01 - read and write access
 Returned value:
-  * eax = pointer to memory area, 0 if error has occured
+  * eax = pointer to memory area, 0 if error has occurred
   * if new area is created (SHM_CREATE or SHM_OPEN_ALWAYS):
     edx = 0 - success, otherwise - error code
   * if existing area is opened (SHM_OPEN or SHM_OPEN_ALWAYS):
@@ -3557,7 +3596,7 @@ Returned value:
   * eax = -1 - invalid signal number
   * otherwise eax = old value of activity for this signal (0/1)
 Remarks:
-  * In current implementation only mask for user excepton handler,
+  * In current implementation only mask for user exception handler,
     which has been previously set by subfunction 24,
     is changed. Signal number corresponds to exception number.
 
@@ -3612,6 +3651,57 @@ Returned value:
   * edx = size of the loaded file, or zero
 Remarks:
   * function loads file and unpacks, if necessary
+======================================================================
+======== Function 68, subfunction 29 - allocate ring memory. =========
+======================================================================
+Parameters:
+  * eax = 68 - function number
+  * ebx = 29 - subfunction number
+  * ecx = required size in bytes
+Returned value:
+  * eax = 0 - failed
+  * eax = pointer to the allocated ring
+Remarks:
+  * The requested size must be an exact multiple of pagesize (4 Kb)
+  * The function allocates memory in such a way that you can read and
+    write beyond the size of the allocated memory and will reach the 
+    beginning of the buffer again.
+
+---------------------- Constants for registers: ----------------------
+  eax - SF_SYS_MISC (68)
+  ebx - SSF_MEM_ALLOC_RING (29)  
+
+======================================================================
+=========== Function 68, subfunction 31 - get driver data. ===========
+======================================================================
+Driver structures are organized into a doubly linked list. Its head is
+a dummy structure with the forward and backward pointers only. Other
+structures, if any, are as follows:
+  * +0: 16*byte: driver name, ASCIIZ
+  * +16 = +0x10: dword: pointer to the next driver structure
+  * +20 = +0x14: dword: pointer to the previous driver structure
+  * +24 = +0x18: dword: driver's base address
+  * +28 = +0x1C: dword: driver's entry point address
+  * +32 = +0x20: dword: driver's service handler address
+
+-------------- Subsubfunction 1 - get driver list head. --------------
+Parameters:
+  * eax = 68 - function number
+  * ebx = 31 - subfunction number
+  * ecx = 1 - subsubfunction number
+Returned value:
+  * ebx = pointer to the next driver structure
+  * ecx = pointer to the previous driver structure
+
+--------- Subsubfunction 2 - get driver list item by pointer. --------
+Parameters:
+  * eax = 68 - function number
+  * ebx = 31 - subfunction number
+  * ecx = 2 - subsubfunction number
+  * edx = pointer to the list item
+  * edi = pointer to memory for driver data
+Returned value:
+  * eax = 0 (ok), -1 (error)
 
 ======================================================================
 ====================== Function 69 - debugging. ======================
@@ -3619,7 +3709,7 @@ Remarks:
 A process can load other process as debugged by set of corresponding
 bit by call to subfunction 7 of function 70.
 A process can have only one debugger; one process can debug some
-others. The system notifies debugger on events occuring with
+others. The system notifies debugger on events occurring with
 debugged process. Messages are written to the buffer defined by
 subfunction 0.
 Format of a message:
@@ -3637,7 +3727,7 @@ Message codes:
     * in addition dword-image of the register DR6 is given:
       * bits 0-3: condition of the corresponding breakpoint (set by
         subfunction 9) is satisfied
-      * bit 14: exception has occured because of the trace mode
+      * bit 14: exception has occurred because of the trace mode
         (flag TF is set TF)
     * process is suspended
 When debugger terminates, all debugged processes are killed.
@@ -3666,7 +3756,7 @@ The full list of subfunctions:
     SSF_RESUME (5), SSF_READ_MEMORY (6), SSF_WRITE_MEMORY (7),
     SSF_TERMINATE (8), SSF_DEFINE_BREAKPOINT (9)
 ======================================================================
-= Function 69, subfunction 0 - define data area fror debug messages. =
+= Function 69, subfunction 0 - define data area for debug messages. ==
 ======================================================================
 Parameters:
   * eax = 69 - function number
@@ -4063,6 +4153,8 @@ Date format:
   * +1: byte: month
   * +2: word: year
   * for example, 25.11.1979 is written as (in hex) 19 0B BB 07
+    Some file systems start the date from 01.01.1980,
+    for example: FAT12/16/32 and exFAT
 Remarks:
   * If BDFE contains cp866 name, the length of BDFE is 304 bytes,
     otherwise - 560 bytes.
@@ -4238,7 +4330,7 @@ Format of the information structure:
   * +20 = +0x14: path, general rules of names forming
 Returned value:
   * eax > 0 - program is loaded, eax contains PID
-  * eax < 0 - an error has occured, -eax contains
+  * eax < 0 - an error has occurred, -eax contains
     file system error code
   * ebx destroyed
 Remarks:
@@ -4420,7 +4512,7 @@ Parameters:
   * bl = 0 - subfunction number
   * bh = device number
 Returned value:
-  * eax = device type number
+  * eax = device type number, -1 on error
 
 ---------------------- Constants for registers: ----------------------
   eax - SF_NETWORK_GET (74)
@@ -4478,7 +4570,7 @@ Returned value:
 
 ---------------------- Constants for registers: ----------------------
   eax - SF_NETWORK_GET (74)
-   bl - SSF_DEVICE_POINER (4)
+   bl - SSF_DEVICE_POINTER (4)
 ======================================================================
 ========= Function 74, Subfunction 6, Get packet TX counter. =========
 ======================================================================
@@ -4514,7 +4606,7 @@ Parameters:
   * bh = device number
 Returned value:
   * eax = Number of bytes sent since device start (lower dword)
-                  -1 on error
+          -1 on error
   * ebx = Number of bytes sent since device start (higher dword)
 
 ---------------------- Constants for registers: ----------------------
@@ -4529,7 +4621,7 @@ Parameters:
   * bh = device number
 Returned value:
   * eax = Number of bytes received since device start (lower dword)
-                  -1 on error
+          -1 on error
   * ebx = Number of bytes received since device start (higher dword)
 
 ---------------------- Constants for registers: ----------------------
@@ -4556,6 +4648,84 @@ Returned value:
 ---------------------- Constants for registers: ----------------------
   eax - SF_NETWORK_GET (74)
    bl - SSF_LINK_STATUS (10)
+======================================================================
+==== Function 74, Subfunction 11, Get TX error packets counter. ======
+======================================================================
+Parameters:
+  * eax = 74 - function number
+  * bl = 11 - subfunction number
+  * bh = device number
+Returned value:
+  * eax = Number of erroneous packets received since device start, -1 on error
+
+---------------------- Constants for registers: ----------------------
+  eax - SF_NETWORK_GET (74)
+   bl - SSF_TX_PACKET_ERROR_COUNT (11)   
+======================================================================
+=== Function 74, Subfunction 12, Get TX dropped packets counter. =====
+======================================================================
+Parameters:
+  * eax = 74 - function number
+  * bl = 12 - subfunction number
+  * bh = device number
+Returned value:
+  * eax = Number of dropped packets since device start, -1 on error
+
+---------------------- Constants for registers: ----------------------
+  eax - SF_NETWORK_GET (74)
+   bl - SSF_TX_PACKET_DROP_COUNT (12)    
+======================================================================
+==== Function 74, Subfunction 13, Get TX missed packets counter. =====
+======================================================================
+Parameters:
+  * eax = 74 - function number
+  * bl = 13 - subfunction number
+  * bh = device number
+Returned value:
+  * eax = Number of missed packets since device start, -1 on error
+
+---------------------- Constants for registers: ----------------------
+  eax - SF_NETWORK_GET (74)
+   bl - SSF_TX_PACKET_MISS_COUNT (13)    
+   ======================================================================
+==== Function 74, Subfunction 14, Get RX error packets counter. ======
+======================================================================
+Parameters:
+  * eax = 74 - function number
+  * bl = 14 - subfunction number
+  * bh = device number
+Returned value:
+  * eax = Number of erroneous packets received since device start, -1 on error
+
+---------------------- Constants for registers: ----------------------
+  eax - SF_NETWORK_GET (74)
+   bl - SSF_RX_PACKET_ERROR_COUNT (14)   
+======================================================================
+=== Function 74, Subfunction 15, Get RX dropped packets counter. =====
+======================================================================
+Parameters:
+  * eax = 74 - function number
+  * bl = 15 - subfunction number
+  * bh = device number
+Returned value:
+  * eax = Number of dropped packets since device start, -1 on error
+
+---------------------- Constants for registers: ----------------------
+  eax - SF_NETWORK_GET (74)
+   bl - SSF_RX_PACKET_DROP_COUNT (12)    
+======================================================================
+==== Function 74, Subfunction 16, Get RX missed packets counter. =====
+======================================================================
+Parameters:
+  * eax = 74 - function number
+  * bl = 16 - subfunction number
+  * bh = device number
+Returned value:
+  * eax = Number of missed packets since device start, -1 on error
+
+---------------------- Constants for registers: ----------------------
+  eax - SF_NETWORK_GET (74)
+   bl - SSF_RX_PACKET_MISS_COUNT (16)  
 ======================================================================
 ============== Function 75, Subfunction 0, Open socket. ==============
 ======================================================================
@@ -4856,7 +5026,7 @@ Parameters:
   * eax = 76 - function number
   * high half of ebx = 1 (IPv4)
   * bh = device number
-  * bl = 7 (Set DNS address)
+  * bl = 7 (Set subnet mask)
   * ecx = subnet mask
 Returned value:
   * eax = -1 on error
@@ -4996,7 +5166,8 @@ Parameters:
 Returned value:
   * eax = -1 on error
 Remarks:
-	ARP_entry struct is defined in ARP.inc in kernel and currently looks like this:
+  * ARP_entry struct is defined in ARP.inc in kernel and currently
+    looks like this:
 struct  ARP_entry
         IP              dd ?
         MAC             dp ?
@@ -5005,7 +5176,7 @@ struct  ARP_entry
 ends
 
 ======================================================================
-==== Function 76, Protocol 5 - ARP, Subfunction 4, Add ARP entry ====
+===== Function 76, Protocol 5 - ARP, Subfunction 4, Add ARP entry ====
 ======================================================================
 Parameters:
   * eax = 76 - function number
@@ -5016,16 +5187,16 @@ Parameters:
 Returned value:
   * eax = -1 on error
 Remarks:
-	See previous function for details on ARP entry.
+  * See previous function for details on ARP entry.
 
 ======================================================================
-=== Function 76, Protocol 5 - ARP, Subfunction 5, Remove ARP entry ====
+=== Function 76, Protocol 5 - ARP, Subfunction 5, Remove ARP entry ===
 ======================================================================
 Parameters:
   * eax = 76 - function number
   * high half of ebx = 5 (ARP)
   * bh = device number
-  * bl = 3 (Read ARP entry)
+  * bl = 5 (Remove ARP entry)
   * ecx = ARP entry number (0 based), use -1 to clear whole ARP table.
 Returned value:
   * eax = -1 on error

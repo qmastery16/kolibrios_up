@@ -63,7 +63,7 @@ edit_block_header:
 end virtual
 
 edit_file:
-	mov	eax, [ebp + panel1_files - panel1_data]
+	mov	eax, [ebp + PanelData.files]
 	mov	ecx, [eax+ecx*4]
 	test	byte [ecx], 10h
 	jz	.file
@@ -107,7 +107,7 @@ edit_file:
 	pop	eax
 	ret
 .memok:
-	lea	esi, [ebp + panel1_dir - panel1_data]
+	lea	esi, [ebp + PanelData.dir]
 	push	eax
 	push	ecx
 	mov	ecx, eax
@@ -123,14 +123,14 @@ edit_file:
 	mov	[ebp + editor_data.memsize], ebx
 	mov	al, [EditEOLStyle]
 	mov	[ebp + editor_data.eol], al
-	mov	eax, dword [esi + panel1_hPlugin - panel1_dir]
+	mov	eax, dword [esi + panel1.hPlugin - panel1.dir]
 	mov	[ebp + editor_data.hPlugin], eax
 	test	eax, eax
 	jz	.nocopyhostname
 	lea	edi, [ebp + editor_data.hostname]
 	push	esi
-	mov	eax, dword [esi + panel1_parents - panel1_dir]
-	mov	esi, dword [esi + panel1_parents_sz - panel1_dir]
+	mov	eax, dword [esi + panel1.parents - panel1.dir]
+	mov	esi, dword [esi + panel1.parents_sz - panel1.dir]
 	add	esi, eax
 @@:
 	dec	esi
@@ -145,7 +145,7 @@ edit_file:
 	jnz	@b
 	pop	esi
 .nocopyhostname:
-	mov	eax, dword [esi + panel1_hFile - panel1_dir]
+	mov	eax, dword [esi + panel1.hFile - panel1.dir]
 	mov	[ebp + editor_data.hFile], eax
 	mov	[ebp + editor_data.encoding], encodings.cp866
 	xor	eax, eax
@@ -2220,11 +2220,11 @@ editor_OnKey:
 	cmp	byte [ebx], al
 	jz	.f7.ret
 	mov	esi, tolower_table
-	test	[find_in_file_dlgdata.flags_case], 10h
+	test	[find_in_file_dlgdata.case.flags], 10h
 	jz	@f
 	mov	esi, identical_table
 @@:
-	test	[find_in_file_dlgdata.flags_whole], 10h
+	test	[find_in_file_dlgdata.whole.flags], 10h
 	setnz	al
 	push	eax
 	push	dword [ebp+editor_data.encoding]; always cp866 for now
@@ -2239,7 +2239,7 @@ editor_OnKey:
 	push	ebx esi
 	push	edi
 	push	edi
-	test	[find_in_file_dlgdata.flags_whole], 10h
+	test	[find_in_file_dlgdata.whole.flags], 10h
 	jnz	@f
 	movzx	eax, byte [esi+ebx]
 	jmp	.search_loop_next
@@ -2284,7 +2284,7 @@ editor_OnKey:
 	jc	.f7.nonextblock
 .f7.notfound_pop:
 ; last chance - if we are looking for a whole word, EOF is ok for last symbol
-	test	[find_in_file_dlgdata.flags_whole], 10h
+	test	[find_in_file_dlgdata.whole.flags], 10h
 	jz	@f
 	mov	esi, [ebp + editor_data.last_block]
 	add	esi, ebp
@@ -2300,7 +2300,7 @@ editor_OnKey:
 	or	[ebp + editor_data.cur_delta], -1
 	sub	ebx, ecx
 	inc	ebx
-	test	[find_in_file_dlgdata.flags_whole], 10h
+	test	[find_in_file_dlgdata.whole.flags], 10h
 	jz	@f
 	inc	ebx
 @@:
@@ -2324,7 +2324,7 @@ editor_OnKey:
 	pop	edi
 ; esi:ebx -> last symbol of match, eax = row, edi = delta in lines
 	pop	esi ebx
-	test	[find_in_file_dlgdata.flags_whole], 10h
+	test	[find_in_file_dlgdata.whole.flags], 10h
 	jz	@f
 	dec	ecx
 @@:
@@ -2550,23 +2550,23 @@ find_in_file_dlg:
         mov     [ebx + dlgtemplate.width], eax
         dec     eax
         dec     eax
-        mov     [ebx - find_in_file_dlgdata + find_in_file_dlgdata.width2], eax
+        mov     [ebx + FindInFileDlgdata.efind.x2], eax
         shr     eax, 1
         dec     eax
         dec     eax
-        mov     [ebx - find_in_file_dlgdata + find_in_file_dlgdata.search_x2], eax
+        mov     [ebx + FindInFileDlgdata.search.x2], eax
         sub     eax, aSearchBLength-1
-        mov     [ebx - find_in_file_dlgdata + find_in_file_dlgdata.search_x1], eax
+        mov     [ebx + FindInFileDlgdata.search.x1], eax
         add     eax, aSearchBLength+3
-        mov     [ebx - find_in_file_dlgdata + find_in_file_dlgdata.cnl_x1], eax
+        mov     [ebx + FindInFileDlgdata.cnl.x1], eax
         add     eax, aCancelBLength - 1
-        mov     [ebx - find_in_file_dlgdata + find_in_file_dlgdata.cnl_x2], eax
-        mov     byte [ebx - find_in_file_dlgdata + find_in_file_dlgdata.flags0], 0xC
-        and     byte [ebx - find_in_file_dlgdata + find_in_file_dlgdata.flags1], not 4
-        and     byte [ebx - find_in_file_dlgdata + find_in_file_dlgdata.flags2], not 4
-	and	byte [ebx - find_in_file_dlgdata + find_in_file_dlgdata.flags_case], not 4
-	and	byte [ebx - find_in_file_dlgdata + find_in_file_dlgdata.flags_whole], not 4
+        mov     [ebx + FindInFileDlgdata.cnl.x2], eax
+        mov     byte [ebx + FindInFileDlgdata.efind.flags], 0xC
+        and     byte [ebx + FindInFileDlgdata.search.flags], not 4
+        and     byte [ebx + FindInFileDlgdata.cnl.flags], not 4
+	and	byte [ebx + FindInFileDlgdata.case.flags], not 4
+	and	byte [ebx + FindInFileDlgdata.whole.flags], not 4
         push    ebx
         call    DialogBox
-	cmp	eax, find_in_file_dlgdata.search_btn
+	cmp	eax, find_in_file_dlgdata.search
 	ret

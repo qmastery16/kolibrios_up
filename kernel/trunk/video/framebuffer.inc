@@ -1,13 +1,13 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                              ;;
-;; Copyright (C) KolibriOS team 2004-2016. All rights reserved. ;;
+;; Copyright (C) KolibriOS team 2004-2023. All rights reserved. ;;
 ;; Distributed under terms of the GNU General Public License    ;;
 ;;                                                              ;;
 ;; Synhronization for MenuetOS.                                 ;;
 ;; Author: Halyavin Andrey, halyavin@land.ru                    ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-$Revision: 6240 $
+$Revision: 9948 $
 
 struct FRB
         list            LHEAD
@@ -30,8 +30,8 @@ create_framebuffer:
         test    eax, eax
         jz      .fail
 
-        mov     [eax+FRB.magic], 'FRMB'
-        mov     [eax+FRB.destroy], 0
+        mov     [eax + FRB.magic], 'FRMB'
+        mov     [eax + FRB.destroy], 0
 .fail:
         ret
 
@@ -48,7 +48,7 @@ init_video:
         cmp     eax, MAX_SCREEN_WIDTH
         ja      $
         mov     [_display.width], eax
-        mov     [ebp+FRB.width], eax
+        mov     [ebp + FRB.width], eax
         mov     [display_width_standard], eax
         dec     eax
         mov     [screen_workarea.right], eax
@@ -57,7 +57,7 @@ init_video:
         cmp     eax, MAX_SCREEN_HEIGHT
         ja      $
         mov     [_display.height], eax
-        mov     [ebp+FRB.height], eax
+        mov     [ebp + FRB.height], eax
         mov     [display_height_standard], eax
         dec     eax
         mov     [screen_workarea.bottom], eax
@@ -72,7 +72,7 @@ init_video:
         movzx   eax, word[BOOT.pitch]         ; for other modes
 @@:
         mov     [_display.lfb_pitch], eax
-        mov     [ebp+FRB.pitch], eax
+        mov     [ebp + FRB.pitch], eax
 
         mov     eax, [BOOT.lfb]
         mov     [LFBAddress], eax
@@ -99,26 +99,25 @@ init_video:
         jmp     .finish
 
 .16bpp:
-        mov     [PUTPIXEL], Vesa20_putpixel16
+        mov     [PUTPIXEL], Vesa20_putpixel16_new
         mov     [GETPIXEL], Vesa20_getpixel16
         mov     [_display.bytes_per_pixel], 2
         jmp     .finish
 
 .24bpp:
-        mov     [PUTPIXEL], Vesa20_putpixel24
+        mov     [PUTPIXEL], Vesa20_putpixel24_new
         mov     [GETPIXEL], Vesa20_getpixel24
         mov     [_display.bytes_per_pixel], 3
         jmp     .finish
 
 .32bpp:
-        mov     [PUTPIXEL], Vesa20_putpixel32
+        mov     [PUTPIXEL], Vesa20_putpixel32_new
         mov     [GETPIXEL], Vesa20_getpixel32
         mov     [_display.bytes_per_pixel], 4
 
 .finish:
-        mov     [MOUSE_PICTURE], mousepointer
-        mov     [_display.check_mouse], check_mouse_area_for_putpixel
-        mov     [_display.check_m_pixel], check_mouse_area_for_getpixel
+        mov     [_display.check_mouse], check_mouse_area_for_putpixel_new
+        mov     [_display.check_m_pixel], check_mouse_area_for_getpixel_new
 
         mov     ax, word [SCR_MODE]
         cmp     ax, 0x0012
@@ -131,16 +130,16 @@ init_video:
         jnc     .create_page_tables
 
         mov     edx, 0x00400000
-        or      esi, PG_GLOBAL+PAT_WC+PG_UWR
+        or      esi, PG_GLOBAL + PAT_WC + PG_UWR
         and     esi, [pte_valid_mask]
         or      esi, PDE_LARGE
-        mov     [ebp+FRB.pde], esi
+        mov     [ebp + FRB.pde], esi
         add     esi, edx
-        mov     [ebp+FRB.pde+4], esi
+        mov     [ebp + FRB.pde + 4], esi
         add     esi, edx
-        mov     [ebp+FRB.pde+8], esi
+        mov     [ebp + FRB.pde + 8], esi
         add     esi, edx
-        mov     [ebp+FRB.pde+12], esi
+        mov     [ebp + FRB.pde + 12], esi
         add     esi, edx
 .ok:
         call    calculate_fast_getting_offset_for_WinMapAddress
@@ -153,30 +152,30 @@ init_video:
 .create_page_tables:
 
         add     ebp, FRB.pde
-        or      esi, PG_GLOBAL+PAT_WC+PG_UWR
+        or      esi, PG_GLOBAL + PAT_WC + PG_UWR
         and     esi, [pte_valid_mask]
 
-        stdcall alloc_kernel_space, 0x1000
+        stdcall alloc_kernel_space, PAGE_SIZE
         mov     edi, eax
         mov     ebx, 4
 
 .new_pd:
         call    alloc_page
-        lea     edx, [eax+PG_UWR]
+        lea     edx, [eax + PG_UWR]
         mov     [ebp], edx
 
         stdcall map_page, edi, eax, PG_SWR
 
         mov     eax, esi
-        mov     ecx, 1024
+        mov     ecx, PAGE_SIZE/4
 @@:
         stosd
-        add     eax, 0x1000
+        add     eax, PAGE_SIZE
         loop    @B
 
         add     esi, 0x400000
         add     ebp, 4
-        sub     edi, 4096
+        sub     edi, PAGE_SIZE
         dec     ebx
         jnz     .new_pd
         stdcall free_kernel_space, edi
@@ -185,25 +184,25 @@ init_video:
 .fake:
         mov     [BOOT.mtrr], byte 2
 
-        stdcall alloc_kernel_space, 0x1000
+        stdcall alloc_kernel_space, PAGE_SIZE
         push    eax                            ;store in stack for subsequent
         mov     edi, eax                       ;free_kernel_space call
 
         call    alloc_page
-        lea     edx, [eax+PG_UWR]
-        mov     [ebp+FRB.pde], edx
+        lea     edx, [eax + PG_UWR]
+        mov     [ebp + FRB.pde], edx
 
         stdcall map_page, edi, eax, PG_SWR
 
 ; max VGA=640*480*4=1228800 bytes
 ; + 32*640*4=81920 bytes for mouse pointer
-        stdcall alloc_pages, ((1228800+81920)/4096)
+        stdcall alloc_pages, ((1228800+81920)/PAGE_SIZE)
         or      eax, PG_GLOBAL+PG_UWR
         and     eax, [pte_valid_mask]
-        mov     ecx, (1228800+81920)/4096
+        mov     ecx, (1228800+81920)/PAGE_SIZE
 @@:
         stosd
-        add     eax, 0x1000
+        add     eax, PAGE_SIZE
         loop    @B
 
         call    free_kernel_space
@@ -213,7 +212,7 @@ align 4
 set_framebuffer:
         push    esi
         push    edi
-        lea     esi, [ecx+FRB.pde]
+        lea     esi, [ecx + FRB.pde]
         mov     eax, sys_proc
 
         cld
@@ -221,11 +220,11 @@ set_framebuffer:
         cli
         mov     [_display.current_lfb], ecx
 .patch_pde:
-        lea     edi, [eax+PROC.pdt_0+4096-32]   ;last 8 pd entries up to 32Mb framebuffer
+        lea     edi, [eax + PROC.pdt_0 + (LFB_BASE shr 20)] ;last 8 pd entries up to 32Mb framebuffer
         mov     ecx, 4
         rep movsd                               ;patch pde
         sub     esi, 16
-        mov     eax, [eax+PROC.list.next]       ;next process/address space
+        mov     eax, [eax + PROC.list.next]       ;next process/address space
         cmp     eax, sys_proc
         jne     .patch_pde
 

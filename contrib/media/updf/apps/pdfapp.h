@@ -13,7 +13,7 @@ enum { ARROW, HAND, WAIT };
 
 extern void winwarn(pdfapp_t*, char *s);
 extern void winerror(pdfapp_t*, fz_error error);
-extern void wintitle(pdfapp_t*, char *title);
+extern void wintitle(pdfapp_t*, char *title, char param[]);
 extern void winresize(pdfapp_t*, int w, int h);
 extern void winrepaint(pdfapp_t*);
 extern void winrepaintsearch(pdfapp_t*);
@@ -32,7 +32,6 @@ struct pdfapp_s
 	char *doctitle;
 	pdf_xref *xref;
 	pdf_outline *outline;
-	xps_context *xps;
 
 	int pagecount;
 	fz_glyph_cache *cache;

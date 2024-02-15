@@ -715,7 +715,7 @@ next_button:
         cmp     [edx], byte 'x'
         jne     next_line
 
-		DrawRectangle3D DISPLAY_X-1,DISPLAY_Y-1,DISPLAY_W+2,DISPLAY_H+2, [sc.work_3d_dark], [sc.work_3d_light]
+		DrawRectangle3D DISPLAY_X-1,DISPLAY_Y-1,DISPLAY_W+2,DISPLAY_H+2, [sc.work_dark], [sc.work_light]
 		DrawRectangle DISPLAY_X,DISPLAY_Y,DISPLAY_W,DISPLAY_H, [sc.work_graph]
         mcall   38, < DISPLAY_X+1, DISPLAY_W+DISPLAY_X-1>, <DISPLAY_Y+1, DISPLAY_Y+1>, 0xE0E0E0 ; internal shadow
 		mcall     , < DISPLAY_X+1,  DISPLAY_X+1>, <DISPLAY_Y+2, DISPLAY_Y+DISPLAY_H-1>,          ; internal shadow
@@ -849,7 +849,7 @@ text:
         db 1,'1',   1,'2', 1,'3', 1,'+', 3,'Int', 3,'Sin', 4,'Asin', 0
         db 1,'4',   1,'5', 1,'6', 1,'-', 3,'1/x', 3,'Cos', 4,'Acos', 0
         db 1,'7',   1,'8', 1,'9', 1,'/', 3,'x^2', 3,'Tan', 4,'Atan', 0
-        db 3,'+/-', 1,'0', 1,'.', 1,'*', 3,'Sqr', 2,'Pi',  1,'=', 0
+        db 3,'+/-', 1,'0', 1,'.', 1,'*', 4,'Sqrt',2,'Pi',  1,'=', 0
         db 'x'
 
 I_END:

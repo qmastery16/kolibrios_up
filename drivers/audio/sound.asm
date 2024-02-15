@@ -143,6 +143,8 @@ CTRL_ATI_RV710           =  0xaa40
 CTRL_ATI_RV740           =  0xaa48
 
 CTRL_AMD_HUDSON          =  0x780d
+CTRL_AMD_RAVEN_RIDGE     =  0x15e3
+CTRL_AMD_MATISSE         =  0x1487
 
 CTRL_VIA_VT82XX          =  0x3288
 CTRL_VIA_VT61XX          =  0x9140
@@ -393,6 +395,8 @@ devices         dd (CTRL_ICH  shl 16)+VID_INTEL, intelac97
                 dd (CTRL_ATI_RV770   shl 16)+VID_ATI, intelhda
 ; AMD
                 dd (CTRL_AMD_HUDSON shl 16)+VID_AMD, intelhda
+                dd (CTRL_AMD_RAVEN_RIDGE shl 16)+VID_AMD, intelhda
+                dd (CTRL_AMD_MATISSE shl 16)+VID_AMD, intelhda
 ; VIA
                 dd (CTRL_VIA_VT82XX shl 16)+VID_VIA, intelhda
                 dd (CTRL_VIA_VT61XX shl 16)+VID_VIA, intelhda
@@ -417,13 +421,13 @@ devices         dd (CTRL_ICH  shl 16)+VID_INTEL, intelac97
 
 srv_entry       dd 0
 
-intelac97       db 'INTELAC97', 0
+intelac97       db 'AC97', 0
 vt823x          db 'VT823X', 0
 sis             db 'SIS', 0
 fm801           db 'FM801', 0
 ensoniq         db 'ENSONIQ', 0
 emu10k1x        db 'EMU10K1X', 0
-intelhda        db 'INTEL_HDA', 0
+intelhda        db 'HDAUDIO', 0
 sb16            db 'SB16', 0
 
 msgInit         db 'Detecting hardware...',13,10,0

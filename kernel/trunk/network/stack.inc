@@ -1,6 +1,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                                 ;;
-;; Copyright (C) KolibriOS team 2004-2016. All rights reserved.    ;;
+;; Copyright (C) KolibriOS team 2004-2021. All rights reserved.    ;;
 ;; Distributed under terms of the GNU General Public License       ;;
 ;;                                                                 ;;
 ;;  STACK.INC                                                      ;;
@@ -21,7 +21,7 @@
 ;;                                                                 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-$Revision: 6476 $
+$Revision: 9917 $
 
 uglobal
         net_10ms        dd ?
@@ -30,6 +30,7 @@ endg
 
 DEBUG_NETWORK_ERROR     = 1
 DEBUG_NETWORK_VERBOSE   = 0
+NETWORK_SANITY_CHECKS   = 1
 
 NET_DEVICES_MAX         = 16
 NET_BUFFERS             = 512
@@ -178,13 +179,21 @@ struct  NET_DEVICE
         reset           dd ?    ;
         transmit        dd ?    ;
 
-        bytes_tx        dq ?    ; Statistics, updated by the driver
-        bytes_rx        dq ?    ;
-        packets_tx      dd ?    ;
-        packets_rx      dd ?    ;
-
         link_state      dd ?    ; link state (0 = no link)
         hwacc           dd ?    ; bitmask stating enabled HW accelerations (offload engines)
+
+        bytes_tx        dq ?    ; Statistics, updated by the driver
+        bytes_rx        dq ?    ;
+
+        packets_tx      dd ?    ;
+        packets_tx_err  dd ?    ; CRC errors, too long or too short frames
+        packets_tx_drop dd ?    ;
+        packets_tx_ovr  dd ?    ; FIFO overrun
+
+        packets_rx      dd ?    ;
+        packets_rx_err  dd ?    ; CRC errors, too long or too short frames
+        packets_rx_drop dd ?    ;
+        packets_rx_ovr  dd ?    ; FIFO overrun
 
 ends
 
@@ -234,11 +243,11 @@ include "queue.inc"
 include "loopback.inc"
 include "ethernet.inc"
 
-include "PPPoE.inc"
+;include "PPPoE.inc"
 
 include "ARP.inc"
 include "IPv4.inc"
-include "IPv6.inc"
+;include "IPv6.inc"
 
 include "icmp.inc"
 include "udp.inc"
@@ -251,11 +260,16 @@ include "socket.inc"
 uglobal
 align 4
 
-        NET_RUNNING     dd ?
-        NET_DRV_LIST    rd NET_DEVICES_MAX
+        net_device_count        dd ?
+        net_device_list         rd NET_DEVICES_MAX
 
-        NET_BUFFS_FREE  rd NET_BUFFERS
-        .current        dd ?
+        net_buffs_free          rd NET_BUFFERS  ; list of pointers to actual net buffs
+        .current                dd ?            ; pointer to current element in net_buffs_free list
+
+if defined NETWORK_SANITY_CHECKS
+        net_buffs_low           dd ?            ; actual net buff mem region start
+        net_buffs_high          dd ?            ; actual net buff mem region stop
+end if
 
 endg
 
@@ -276,7 +290,11 @@ stack_init:
         test    eax, eax
         jz      .fail
 
-        mov     edi, NET_BUFFS_FREE
+if defined NETWORK_SANITY_CHECKS
+        mov     [net_buffs_low], eax
+end if
+
+        mov     edi, net_buffs_free
         mov     ecx, NET_BUFFERS
         cld
   .loop:
@@ -285,18 +303,23 @@ stack_init:
         dec     ecx
         jnz     .loop
 
-        mov     eax, NET_BUFFS_FREE
+if defined NETWORK_SANITY_CHECKS
+        sub     eax, NET_BUFFER_SIZE
+        mov     [net_buffs_high], eax
+end if
+
+        mov     eax, net_buffs_free
         stosd
 
 ; Init the network drivers list
         xor     eax, eax
-        mov     edi, NET_RUNNING
+        mov     edi, net_device_count
         mov     ecx, (NET_DEVICES_MAX + 1)
         rep stosd
 
         eth_init
 
-        pppoe_init
+;        pppoe_init
 
         ipv4_init
 ;        ipv6_init
@@ -346,7 +369,7 @@ stack_handler:
         je      .exit
         mov     [net_10ms], eax
 
-        cmp     [NET_RUNNING], 0
+        cmp     [net_device_count], 0
         je      .exit
 
         test    [net_10ms], 0x0f        ; 160ms
@@ -378,13 +401,23 @@ proc net_buff_alloc stdcall, buffersize
 
         spin_lock_irqsave
 
-        mov     eax, [NET_BUFFS_FREE.current]
-        cmp     eax, NET_BUFFS_FREE+NET_BUFFERS*4
+        mov     eax, [net_buffs_free.current]
+        cmp     eax, net_buffs_free+NET_BUFFERS*4
         jae     .out_of_mem
         mov     eax, [eax]
-        add     [NET_BUFFS_FREE.current], 4
+        add     [net_buffs_free.current], 4
 
         spin_unlock_irqrestore
+
+if defined NETWORK_SANITY_CHECKS
+        cmp     eax, [net_buffs_low]
+        cmp     eax, [net_buffs_low]
+        jb      .assert_mbuff
+        cmp     eax, [net_buffs_high]
+        ja      .assert_mbuff
+        test    eax, 0x7ff
+        jnz     .assert_mbuff
+end if
 
         DEBUGF  DEBUG_NETWORK_VERBOSE, "net_buff_alloc: 0x%x\n", eax
         ret
@@ -400,6 +433,15 @@ proc net_buff_alloc stdcall, buffersize
         xor     eax, eax
         DEBUGF  DEBUG_NETWORK_ERROR, "net_buff_alloc: too large!\n"
         ret
+
+if defined NETWORK_SANITY_CHECKS
+  .assert_mbuff:
+        DEBUGF  DEBUG_NETWORK_ERROR, "net_buff_alloc: invalid buffer 0x%x\n", eax
+        DEBUGF  DEBUG_NETWORK_ERROR, "net_buff_alloc: caller=0x%x\n", [esp+4]
+        xor     eax, eax
+        ret
+end if
+
 endp
 
 
@@ -408,16 +450,35 @@ proc net_buff_free stdcall, buffer
 
         DEBUGF  DEBUG_NETWORK_VERBOSE, "net_buff_free: 0x%x\n", [buffer]
 
+if defined NETWORK_SANITY_CHECKS
+        mov     eax, [buffer]
+        cmp     eax, [net_buffs_low]
+        jb      .assert_mbuff
+        cmp     eax, [net_buffs_high]
+        ja      .assert_mbuff
+        test    eax, 0x7ff
+        jnz     .assert_mbuff
+end if
+
         spin_lock_irqsave
 
-        sub     [NET_BUFFS_FREE.current], 4
-        mov     eax, [NET_BUFFS_FREE.current]
+        sub     [net_buffs_free.current], 4             ; move pointer backwards
+        mov     eax, [net_buffs_free.current]           ; place free'd buffer pointer on the list
         push    [buffer]
         pop     dword[eax]
 
         spin_unlock_irqrestore
 
         ret
+
+if defined NETWORK_SANITY_CHECKS
+  .assert_mbuff:
+        DEBUGF  DEBUG_NETWORK_ERROR, "net_buff_free: invalid buffer 0x%x\n", eax
+        DEBUGF  DEBUG_NETWORK_ERROR, "net_buff_free: caller=0x%x\n", [esp+4]
+        xor     eax, eax
+        ret
+end if
+
 endp
 
 
@@ -434,10 +495,10 @@ net_send_event:
 ; Send event to all applications
         push    edi ecx
         mov     edi, SLOT_BASE
-        mov     ecx, [TASK_COUNT]
+        mov     ecx, [thread_count]
   .loop:
-        add     edi, 256
-        or      [edi + APPDATA.event_mask], EVENT_NETWORK2
+        add     edi, sizeof.APPDATA
+        or      [edi + APPDATA.occurred_events], EVENT_NETWORK2
         loop    .loop
         pop     ecx edi
 
@@ -460,14 +521,14 @@ net_add_device:
 
         DEBUGF  DEBUG_NETWORK_VERBOSE, "net_add_device: %x\n", ebx   ;;; TODO: use mutex to lock net device list
 
-        cmp     [NET_RUNNING], NET_DEVICES_MAX
+        cmp     [net_device_count], NET_DEVICES_MAX
         jae     .error
 
 ;----------------------------------
 ; Check if device is already listed
         mov     eax, ebx
         mov     ecx, NET_DEVICES_MAX    ; We need to check whole list because a device may be removed without re-organizing list
-        mov     edi, NET_DRV_LIST
+        mov     edi, net_device_list
 
         repne scasd                     ; See if device is already in the list
         jz      .error
@@ -476,7 +537,7 @@ net_add_device:
 ; Find empty slot in the list
         xor     eax, eax
         mov     ecx, NET_DEVICES_MAX
-        mov     edi, NET_DRV_LIST
+        mov     edi, net_device_list
 
         repne scasd
         jnz     .error
@@ -488,10 +549,10 @@ net_add_device:
         mov     [edi], ebx              ; add device to list
 
         mov     eax, edi                ; Calculate device number in eax
-        sub     eax, NET_DRV_LIST
+        sub     eax, net_device_list
         shr     eax, 2
 
-        inc     [NET_RUNNING]           ; Indicate that one more network device is up and running
+        inc     [net_device_count]      ; Indicate that one more network device is up and running
 
         call    net_send_event
 
@@ -517,7 +578,7 @@ net_add_device:
 align 4
 net_remove_device:
 
-        cmp     [NET_RUNNING], 0
+        cmp     [net_device_count], 0
         je      .error
 
 ;----------------------------
@@ -525,7 +586,7 @@ net_remove_device:
 
         mov     eax, ebx
         mov     ecx, NET_DEVICES_MAX
-        mov     edi, NET_DRV_LIST
+        mov     edi, net_device_list
 
         repne scasd
         jnz     .error
@@ -535,7 +596,7 @@ net_remove_device:
 
         xor     eax, eax
         mov     dword [edi-4], eax
-        dec     [NET_RUNNING]
+        dec     [net_device_count]
 
         call    net_send_event
 
@@ -575,7 +636,7 @@ net_ptr_to_num4:                ; Todo, place number in device structure so we o
 
         push    ecx
         mov     ecx, NET_DEVICES_MAX
-        mov     edi, NET_DRV_LIST
+        mov     edi, net_device_list
   .loop:
         cmp     ebx, [edi]
         je      .found
@@ -589,7 +650,7 @@ net_ptr_to_num4:                ; Todo, place number in device structure so we o
         ret
 
   .found:
-        sub     edi, NET_DRV_LIST
+        sub     edi, net_device_list
         pop     ecx
         ret
 
@@ -717,22 +778,22 @@ sys_network:
         cmp     bl, 255
         jne     @f
 
-        mov     eax, [NET_RUNNING]
-        mov     [esp+32], eax
+        mov     eax, [net_device_count]
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 
    @@:
-        cmp     bh, NET_DEVICES_MAX             ; Check if device number exists
+        cmp     bh, NET_DEVICES_MAX                     ; Check if device number exists
         jae     .doesnt_exist
 
         mov     esi, ebx
         and     esi, 0x0000ff00
         shr     esi, 6
 
-        cmp     dword[esi + NET_DRV_LIST], 0    ; check if driver is running
+        cmp     dword[esi + net_device_list], 0         ; check if device is running
         je      .doesnt_exist
 
-        mov     eax, [esi + NET_DRV_LIST]
+        mov     eax, [esi + net_device_list]
 
         and     ebx, 0x000000ff
         cmp     ebx, .number
@@ -740,26 +801,35 @@ sys_network:
         jmp     dword [.table + 4*ebx]
 
   .table:
-        dd      .get_type               ; 0
-        dd      .get_dev_name           ; 1
-        dd      .reset                  ; 2
-        dd      .stop                   ; 3
-        dd      .get_ptr                ; 4
-        dd      .get_drv_name           ; 5
+        dd      .get_type               ;  0
+        dd      .get_dev_name           ;  1
+        dd      .reset                  ;  2
+        dd      .stop                   ;  3
+        dd      .get_ptr                ;  4
+        dd      .get_drv_name           ;  5
 
-        dd      .packets_tx             ; 6
-        dd      .packets_rx             ; 7
-        dd      .bytes_tx               ; 8
-        dd      .bytes_rx               ; 9
+        dd      .packets_tx             ;  6
+        dd      .packets_rx             ;  7
+        dd      .bytes_tx               ;  8
+        dd      .bytes_rx               ;  9
         dd      .state                  ; 10
+        dd      .packets_tx_err         ; 11
+        dd      .packets_tx_drop        ; 12
+        dd      .packets_tx_ovr         ; 13
+        dd      .packets_rx_err         ; 14
+        dd      .packets_rx_drop        ; 15
+        dd      .packets_rx_ovr         ; 16
+
   .number = ($ - .table) / 4 - 1
 
   .get_type:
         mov     eax, [eax + NET_DEVICE.device_type]
-        mov     [esp+32], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 
   .get_dev_name:
+        stdcall is_region_userspace, ecx, 64
+        jnz     .bad_buffer
         mov     esi, [eax + NET_DEVICE.name]
         mov     edi, ecx
 
@@ -767,62 +837,93 @@ sys_network:
         rep movsd
 
         xor     eax, eax
-        mov     [esp+32], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 
   .reset:
         call    [eax + NET_DEVICE.reset]
-        mov     [esp+32], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 
   .stop:
         call    [eax + NET_DEVICE.unload]
-        mov     [esp+32], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 
 
   .get_ptr:
-        mov     [esp+32], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 
 
   .get_drv_name:
         xor     eax, eax
-        mov     [esp+32], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 
   .packets_tx:
         mov     eax, [eax + NET_DEVICE.packets_tx]
-        mov     [esp+32], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 
   .packets_rx:
         mov     eax, [eax + NET_DEVICE.packets_rx]
-        mov     [esp+32], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 
   .bytes_tx:
         mov     ebx, dword[eax + NET_DEVICE.bytes_tx + 4]
-        mov     [esp+20], ebx
+        mov     [esp + SYSCALL_STACK.ebx], ebx
         mov     eax, dword[eax + NET_DEVICE.bytes_tx]
-        mov     [esp+32], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 
   .bytes_rx:
         mov     ebx, dword[eax + NET_DEVICE.bytes_rx + 4]
-        mov     [esp+20], ebx
+        mov     [esp + SYSCALL_STACK.ebx], ebx
         mov     eax, dword[eax + NET_DEVICE.bytes_rx]
-        mov     [esp+32], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
+        ret
+
+  .packets_tx_err:
+        mov     eax, [eax + NET_DEVICE.packets_tx_err]
+        mov     [esp + SYSCALL_STACK.eax], eax
+        ret
+
+  .packets_tx_drop:
+        mov     eax, [eax + NET_DEVICE.packets_tx_drop]
+        mov     [esp + SYSCALL_STACK.eax], eax
+        ret
+
+  .packets_tx_ovr:
+        mov     eax, [eax + NET_DEVICE.packets_tx_ovr]
+        mov     [esp + SYSCALL_STACK.eax], eax
+        ret
+
+  .packets_rx_err:
+        mov     eax, [eax + NET_DEVICE.packets_rx_err]
+        mov     [esp + SYSCALL_STACK.eax], eax
+        ret
+
+  .packets_rx_drop:
+        mov     eax, [eax + NET_DEVICE.packets_rx_drop]
+        mov     [esp + SYSCALL_STACK.eax], eax
+        ret
+
+  .packets_rx_ovr:
+        mov     eax, [eax + NET_DEVICE.packets_rx_ovr]
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 
   .state:
         mov     eax, [eax + NET_DEVICE.link_state]
-        mov     [esp+32], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 
 
   .doesnt_exist:
-        mov     dword[esp+32], -1
+  .bad_buffer: ; Sanity check failed, exit
+        mov     dword[esp + SYSCALL_STACK.eax], -1
         ret
 
 
@@ -837,10 +938,10 @@ sys_protocols:
         cmp     bh, NET_DEVICES_MAX             ; Check if device number exists
         jae     .doesnt_exist
 
-        mov     esi, ebx
-        and     esi, 0x0000ff00
-        shr     esi, 6                          ; now we have the device num * 4 in esi
-        cmp     [esi + NET_DRV_LIST], 0         ; check if driver is running
+        mov     eax, ebx
+        and     eax, 0x0000ff00
+        shr     eax, 6                          ; now we have the device num * 4 in eax
+        cmp     [eax + net_device_list], 0      ; check if device is running
         je      .doesnt_exist
 
         push    .return                         ; return address (we will be using jumps instead of calls)
@@ -866,11 +967,11 @@ sys_protocols:
         cmp     ax, API_ARP
         je      arp_api
 
-        cmp     ax, API_PPPOE
-        je      pppoe_api
+;        cmp     ax, API_PPPOE
+;        je      pppoe_api
 
-        cmp     ax, API_IPv6
-        je      ipv6_api
+;        cmp     ax, API_IPv6
+;        je      ipv6_api
 
         add     esp, 4                           ; if we reached here, no function was called, so we need to balance stack
 
@@ -878,5 +979,5 @@ sys_protocols:
         mov     eax, -1
 
   .return:
-        mov     [esp+28+4], eax                 ; return eax value to the program
+        mov     [esp + SYSCALL_STACK.eax], eax   ; return eax value to the program
         ret

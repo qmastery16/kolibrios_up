@@ -11,7 +11,7 @@
 ;
 ;======================================================================
 
-$Revision: 5363 $
+$Revision: 9942 $
 
  
 d80x25_bottom:
@@ -89,13 +89,14 @@ end if
 loading_msg latin1 "Laadin KolibriOS...",0
 
 if ~ defined extended_primary_loader
-save_quest latin1 "Jäta meelde praegused seaded? [y/n]: ",0
+save_quest         latin1 "Jäta meelde praegused seaded? [y/n]: ",0
 loader_block_error latin1 "Alglaaduri andmed vigased, ei saa jätkata. Peatatud.",0
+write_err_msg      latin1 "Salvestamine ebaõnnestus. Käivitamise jätkamiseks vajutage suvalist klahvi...",0
 end if
 
 _st latin1 '║                   ┌───────────────────────────────┬─┐',13,10,0
-_r1 latin1 '║                   │  320x200  EGA/CGA 256 colors  │ │',13,10,0
-_r2 latin1 '║                   │  640x480  VGA 16 colors       │ │',13,10,0
+_r1 latin1 '║                   │  320x200  EGA/CGA 256 värvi   │ │',13,10,0
+_r2 latin1 '║                   │  640x480  VGA 16 värvi        │ │',13,10,0
 _rs latin1 '║                   │  ????x????@??  SVGA VESA      │ │',13,10,0
 _bt latin1 '║                   └───────────────────────────────┴─┘',13,10,0
 

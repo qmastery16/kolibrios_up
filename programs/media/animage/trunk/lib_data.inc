@@ -1,27 +1,13 @@
 ;---------------------------------------------------------------------
-head_f_i:
-head_f_l	db 'System error',0
-;---------------------------------------------------------------------
 system_dir_1: db '/sys/lib/libimg.obj',0
-err_message_found_lib_1 db 39,'libimg.obj',39,' - Not found!',0
-err_message_import_1 db 39,'libimg.obj',39,' - Wrong import!',0
-
-system_dir_ProcLib db '/sys/lib/proc_lib.obj',0
-err_message_found_lib2 db 39,'proc_lib.obj',39,' - Not found!',0
-err_message_import2	db 39,'proc_lib.obj',39,' - Wrong import!',0
-
+system_dir_2 db '/sys/lib/proc_lib.obj',0
 system_dir_3: db '/sys/lib/kmenu.obj',0
-err_message_found_lib_3 db 39,'kmenu.obj',39,' - Not found!',0
-err_message_import_3 db 39,'kmenu.obj',39,' - Wrong import!',0
 ;---------------------------------------------------------------------
 align 4
 l_libs_start:
-	lib1 l_libs system_dir_1+9, cur_dir_path, library_path, system_dir_1,\
-		err_message_found_lib_1, head_f_l, import_libimg, err_message_import_1, head_f_i
-	lib2 l_libs system_dir_ProcLib+9, cur_dir_path, library_path, system_dir_ProcLib, \
-		err_message_found_lib2, head_f_l, ProcLib_import, err_message_import2, head_f_i
-	lib3 l_libs system_dir_3+9, cur_dir_path, library_path, system_dir_3,\
-		err_message_found_lib_3, head_f_l, import_libkmenu, err_message_import_3, head_f_i
+	lib1 l_libs system_dir_1+9, library_path, system_dir_1, import_libimg
+	lib2 l_libs system_dir_2+9, library_path, system_dir_2, ProcLib_import
+	lib3 l_libs system_dir_3+9, library_path, system_dir_3, import_libkmenu
 end_l_libs:
 ;---------------------------------------------------------------------
 align 4
@@ -65,6 +51,29 @@ db	'JPG',0
 db	'PNG',0
 .end:
 db	0
+
+align 4
+ColorDialog_data:
+.type			dd 0
+.procinfo		dd procinfo ;+4
+.com_area_name		dd cd_communication_area_name ;+8
+.com_area		dd 0 ;+12
+.start_path		dd colordialog_path ;+16
+.draw_window		dd drawwin ;+20
+.status			dd 0 ;+24
+.x:
+.x_size			dw 510 ;+28 ; Window X size
+.x_start		dw 10 ;+30 ; Window X position
+.y:
+.y_size			dw 310 ;+32 ; Window y size
+.y_start		dw 10 ;+34 ; Window Y position
+.color_type		dd 0 ;+36 ; 0- RGB, 1 or other - reserved
+.color			dd 0 ;+40 ; Selected color
+
+cd_communication_area_name:
+	db 'FFFFFFFF_color_dialog',0
+colordialog_path:
+	db '/sys/colrdial',0 
 
 ;start_temp_file_name:	db 'pattern.mgb',0
 
@@ -120,11 +129,15 @@ align 4
 ProcLib_import:
 OpenDialog_Init		dd aOpenDialog_Init
 OpenDialog_Start	dd aOpenDialog_Start
+ColorDialog_Init	dd aColorDialog_Init
+ColorDialog_Start	dd aColorDialog_Start
 ;OpenDialog__Version	dd aOpenDialog_Version
         dd      0
         dd      0
 aOpenDialog_Init	db 'OpenDialog_init',0
 aOpenDialog_Start	db 'OpenDialog_start',0
+aColorDialog_Init	db 'ColorDialog_init',0
+aColorDialog_Start	db 'ColorDialog_start',0
 ;aOpenDialog_Version	db 'Version_OpenDialog',0
 
 align 4

@@ -26,7 +26,9 @@ struct llist
 	int KeyDown(); 
 	int KeyUp(); 
 	int KeyHome(); 
+	int KeyHomeHor(); 
 	int KeyEnd(); 
+	int KeyEndHor(); 
 	int KeyPgDown(); 
 	int KeyPgUp(); 
 	int KeyLeft(); 
@@ -78,12 +80,14 @@ struct llist
 	{
 		if (first == 0) return 0;
 		if (first > wheel_size+1) first -= wheel_size; else first=0;
+		CheckDoesValuesOkey();
 		return 1;
 	} 
 	if (scroll_state == 1)
 	{
 		if (visible + first == count) return 0;
 		if (visible+first+wheel_size+1 > count) first = count - visible; else first+=wheel_size;
+		CheckDoesValuesOkey();
 		return 1;
 	}
 	return 0;
@@ -98,21 +102,21 @@ struct llist
 
 :int llist::ProcessMouse(int xx, yy)
 {
-	int cur_y_temp, cur_x_temp, ret=0;
+	int new_cur_y, new_cur_x, ret=0;
 	if (MouseOver(xx, yy))
 	{
-		cur_y_temp = yy - y / item_h + first;
-		if (cur_y_temp != cur_y) && (cur_y_temp<count)
+		new_cur_y = yy - y / item_h + first;
+		if (new_cur_y != cur_y) && (new_cur_y<count)
 		{
-			cur_y = cur_y_temp;
+			cur_y = new_cur_y;
 			ret = 1;
 		}
 		if (horisontal_selelection) 
 		{		
-			cur_x_temp = xx - x / item_w;
-			if (cur_x_temp != cur_x) && (cur_x_temp<column_max)
+			new_cur_x = xx - x / item_w;
+			if (new_cur_x != cur_x) && (new_cur_x<column_max)
 			{
-				cur_x = cur_x_temp;
+				cur_x = new_cur_x;
 				ret = 1;
 			}
 		}
@@ -122,6 +126,18 @@ struct llist
 
 :int llist::ProcessKey(dword key)
 {
+	if (horisontal_selelection) {
+		if (key_modifier & KEY_LCTRL) || (key_modifier & KEY_RCTRL)	switch(key)	{
+			case SCAN_CODE_HOME:  KeyHome(); break;
+			case SCAN_CODE_END:   KeyEnd();
+		} 
+		switch(key) {
+			case SCAN_CODE_LEFT:  return KeyLeft();
+			case SCAN_CODE_RIGHT: return KeyRight();
+			case SCAN_CODE_HOME:  return KeyHomeHor();
+			case SCAN_CODE_END:   return KeyEndHor();
+		}
+	} 
 	switch(key)
 	{
 		case SCAN_CODE_DOWN: return KeyDown();
@@ -130,11 +146,6 @@ struct llist
 		case SCAN_CODE_END:  return KeyEnd();
 		case SCAN_CODE_PGUP: return KeyPgUp();
 		case SCAN_CODE_PGDN: return KeyPgDown();
-	}
-	if (horisontal_selelection) switch(key)
-	{
-		case SCAN_CODE_LEFT:  return KeyLeft();
-		case SCAN_CODE_RIGHT: return KeyRight();
 	}
 	return 0;
 }
@@ -159,11 +170,11 @@ struct llist
 		first++;
 		cur_y++;
 	}
-	if (cur_y < first) || (cur_y > first + visible)
+	if (cur_y < first) || (cur_y >= first + visible)
 	{
 		first = cur_y;
-		CheckDoesValuesOkey();
 	}
+	CheckDoesValuesOkey();
 	return 1;
 }
 
@@ -194,6 +205,21 @@ struct llist
 	return 1;
 }
 
+:int llist::KeyHomeHor()
+{
+	if (cur_x==0) return 0;
+	cur_x = 0;
+	return 1;
+}
+
+:int llist::KeyEndHor()
+{
+	if (cur_x==column_max) return 0;
+	cur_x = column_max;
+	CheckDoesValuesOkey();
+	return 1;
+}
+
 :int llist::KeyHome()
 {
 	if (cur_y==0) && (first==0) return 0;
@@ -206,6 +232,7 @@ struct llist
 	if (cur_y==count-1) && (first==count-visible) return 0;
 	cur_y = count-1;
 	first = count - visible;
+	CheckDoesValuesOkey();
 	return 1;
 }
 
@@ -234,6 +261,7 @@ struct llist
 	if (visible + first > count) first = count - visible;
 	if (first < 0) first = 0;
 	if (cur_y >= count) cur_y = count - 1;
+	if (cur_x >= column_max) cur_x = column_max;
 	if (cur_y < 0) cur_y = 0;
 	if (cur_x < 0) cur_x = 0;
 }
@@ -269,6 +297,8 @@ struct llist
 
 :void llist_copy(dword dest, src)
 {
+	memmov(dest, src, sizeof(llist));
+	/*
 	EDI = dest;
 	ESI = src;
 	EDI.llist.x = ESI.llist.x;
@@ -286,6 +316,7 @@ struct llist
 	EDI.llist.cur_y = ESI.llist.cur_y;
 	EDI.llist.column_max = ESI.llist.column_max;
 	EDI.llist.active = ESI.llist.active;
+	*/
 }
 
 #endif

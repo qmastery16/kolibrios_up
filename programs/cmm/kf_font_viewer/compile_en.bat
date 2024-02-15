@@ -1,5 +1,4 @@
-@C-- "font_viewer.c"
-@del "font_viewer"
-@rename "font_viewer.com" "font_viewer"
-@del warning.txt
-@pause
+@del kf_view
+@C-- font_viewer.c
+@rename font_viewer.com kf_view
+if not exist kf_view ( @pause )

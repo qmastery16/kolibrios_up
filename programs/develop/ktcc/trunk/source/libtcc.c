@@ -71,6 +71,13 @@ ST_DATA struct TCCState *tcc_state;
 #ifdef TCC_TARGET_MEOS
 #include "tccmeos.c"
 #endif
+#ifdef TCC_TARGET_KX
+#include "tcckx.c"
+#endif
+#ifdef TCC_TARGET_MEOS_LINUX
+#include <libgen.h>
+#endif
+
 
 #endif /* ONE_SOURCE */
 
@@ -106,12 +113,17 @@ static void tcc_set_lib_path_w32(TCCState *s)
 {
     char path[1024], *p;
     GetModuleFileNameA(tcc_module, path, sizeof path);
+#ifdef TCC_TARGET_KX
+	kx_fix_root_directory(path, sizeof path);
+    normalize_slashes(strlwr(path));
+#else
     p = tcc_basename(normalize_slashes(strlwr(path)));
     if (p - 5 > path && 0 == strncmp(p - 5, "/bin/", 5))
         p -= 5;
     else if (p > path)
         p--;
     *p = 0;
+#endif
     tcc_set_lib_path(s, path);
 }
 
@@ -140,21 +152,40 @@ BOOL WINAPI DllMain (HINSTANCE hDll, DWORD dwReason, LPVOID lpReserved)
 }
 #endif
 #else // _WIN32
-#ifdef TCC_TARGET_MEOS
+#if defined TCC_TARGET_MEOS
 /* on Kolibri host, we suppose the lib and includes are at the location of 'tcc' /lib, /include */
 static void tcc_set_lib_path_kos(TCCState *s)
 {
 	char** argv0 = (char**)0x20; // path in kolibri header
     char path[1024], *p;
 	strncpy(path, *argv0, sizeof path);
+#ifdef TCC_TARGET_KX
+	kx_fix_root_directory(path, sizeof path);
+#else
 	p = tcc_basename(path);
     if (p > path) p--;
     *p = 0;
+#endif
     tcc_set_lib_path(s, path);
 }
-#endif
-#endif
 
+#if defined TCC_TARGET_MEOS_LINUX
+static void tcc_set_lib_path_linux(TCCState *s)
+{
+    char buff[4096+1];
+    readlink("/proc/self/exe", buff, 4096);
+#ifdef TCC_TARGET_KX
+	kx_fix_root_directory(buff, sizeof buff);
+	const char *path = buff;
+#else
+    const char *path = dirname(buff);
+#endif
+    tcc_set_lib_path(s, path);
+}
+
+#endif
+#endif
+#endif
 /********************************************************/
 /* copy a string and truncate it. */
 PUB_FUNC char *pstrcpy(char *buf, int buf_size, const char *s)
@@ -629,7 +660,11 @@ ST_FUNC void put_extern_sym2(Sym *sym, Section *section,
     else
         sh_num = section->sh_num;
 
-    if ((sym->type.t & VT_BTYPE) == VT_FUNC) {
+    if (((sym->type.t & VT_BTYPE) == VT_FUNC
+#ifdef TCC_TARGET_KX
+		) && ((vtop->type.t & VT_IMPORT) == 0
+#endif
+		)) {
         sym_type = STT_FUNC;
     } else if ((sym->type.t & VT_BTYPE) == VT_VOID) {
         sym_type = STT_NOTYPE;
@@ -828,11 +863,14 @@ PUB_FUNC void tcc_error_noabort(const char *fmt, ...)
 PUB_FUNC void tcc_error(const char *fmt, ...)
 {
     TCCState *s1 = tcc_state;
+	// { Edit by Coldy
+	if (fmt) {
     va_list ap;
 
     va_start(ap, fmt);
     error1(s1, 0, fmt, ap);
     va_end(ap);
+	} // }
     /* better than nothing: in some cases, we accept to handle errors */
     if (s1->error_set_jmp_enabled) {
         longjmp(s1->error_jmp_buf, 1);
@@ -1092,10 +1130,16 @@ LIBTCCAPI TCCState *tcc_new(void)
 #ifdef _WIN32
     tcc_set_lib_path_w32(s);
 #else
-#ifdef TCC_TARGET_MEOS
+
+#if defined TCC_TARGET_MEOS && ! TCC_TARGET_MEOS_LINUX
     tcc_set_lib_path_kos(s);
 #else
+    
+#ifdef TCC_TARGET_MEOS_LINUX
+    tcc_set_lib_path_linux(s);
+#else
     tcc_set_lib_path(s, CONFIG_TCCDIR);
+#endif
 #endif
 #endif
     s->output_type = 0;
@@ -1154,6 +1198,13 @@ LIBTCCAPI TCCState *tcc_new(void)
 # ifdef TCC_TARGET_X86_64
     tcc_define_symbol(s, "_WIN64", NULL);
 # endif
+#elif defined(TCC_TARGET_MEOS) || defined(TCC_TARGET_MEOS_LINUX)
+    tcc_define_symbol(s, "KOLIBRI",  NULL);
+    tcc_define_symbol(s, "_KOLIBRI", NULL);
+    tcc_define_symbol(s, "_KOLIBRI_",NULL);
+#ifdef TCC_TARGET_KX
+	tcc_define_symbol(s, "__KX__", NULL);
+#endif
 #else
     tcc_define_symbol(s, "__unix__", NULL);
     tcc_define_symbol(s, "__unix", NULL);
@@ -1176,7 +1227,7 @@ LIBTCCAPI TCCState *tcc_new(void)
     tcc_define_symbol(s, "__NetBSD__", str( __NetBSD__));
 #  undef str
 # endif
-
+    
     /* TinyCC & gcc defines */
 #if defined TCC_TARGET_PE && defined TCC_TARGET_X86_64
     tcc_define_symbol(s, "__SIZE_TYPE__", "unsigned long long");
@@ -1437,8 +1488,10 @@ ST_FUNC int tcc_add_file_internal(TCCState *s1, const char *filename, int flags,
     }
 #endif
 
-#if defined(TCC_TARGET_PE) ||  defined(TCC_TARGET_MEOS)
+#if defined (TCC_TARGET_PE) ||  (defined(TCC_TARGET_MEOS)  && !defined(TCC_TARGET_KX))
     ret = pe_load_file(s1, filename, fd);
+#elif defined(TCC_TARGET_KX)
+    ret = pe_load_def(s1, fd);
 #else
     /* as GNU ld, consider it is an ld script if not recognized */
     ret = tcc_load_ldscript(s1);
@@ -1699,8 +1752,8 @@ LIBTCCAPI int tcc_set_output_type(TCCState *s, int output_type)
 #elif defined(TCC_TARGET_MEOS)
     if (s->output_type != TCC_OUTPUT_OBJ && !s->nostdlib)
     {
-        tcc_add_crt(s,"start.o");
-//        tcc_add_library(s,"ck"); // adding libck.a dont work, because need to be added last
+        tcc_add_crt(s,"crt0.o");
+        //tcc_add_library(s,"lc.obj"); // adding libck.a dont work, because need to be added last
     }
 #else
     /* add libc crt1/crti objects */
@@ -2038,7 +2091,8 @@ enum {
     TCC_OPTION_MD,
     TCC_OPTION_MF,
     TCC_OPTION_x,
-    TCC_OPTION_stack
+    TCC_OPTION_stack,
+    TCC_OPTION_nobss
 };
 
 #define TCC_OPTION_HAS_ARG 0x0001
@@ -2100,6 +2154,9 @@ static const TCCOption tcc_options[] = {
     { "MF", TCC_OPTION_MF, TCC_OPTION_HAS_ARG },
     { "x", TCC_OPTION_x, TCC_OPTION_HAS_ARG },
     { "stack", TCC_OPTION_stack, TCC_OPTION_HAS_ARG | TCC_OPTION_NOSEP},
+#if defined(TCC_TARGET_MEOS) && !defined (TCC_TARGET_KX)
+    { "nobss", TCC_OPTION_nobss, 0 },
+#endif
     { NULL, 0, 0 },
 };
 
@@ -2229,6 +2286,9 @@ ST_FUNC int tcc_parse_args1(TCCState *s, int argc, char **argv)
         case TCC_OPTION_B:
             /* set tcc utilities path (mainly for tcc development) */
             tcc_set_lib_path(s, optarg);
+#ifdef TCC_TARGET_MEOS 
+            tcc_split_path(s, (void ***)&s->crt_paths, &s->nb_crt_paths, CONFIG_TCC_CRTPREFIX);
+#endif
             break;
         case TCC_OPTION_l:
             args_parser_add_file(s, r, TCC_FILETYPE_BINARY);
@@ -2432,6 +2492,11 @@ ST_FUNC int tcc_parse_args1(TCCState *s, int argc, char **argv)
             s->pe_stack_size = strtoul(optarg+1, NULL, 10);
 #endif
             break;
+#if defined(TCC_TARGET_MEOS) && !defined (TCC_TARGET_KX)
+        case TCC_OPTION_nobss:
+            s->nobss = 1;
+            break;
+#endif
         default:
             if (s->warn_unsupported) {
             unsupported_option:

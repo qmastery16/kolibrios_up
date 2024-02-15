@@ -1,6 +1,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                                 ;;
-;; Copyright (C) KolibriOS team 2004-2015. All rights reserved.    ;;
+;; Copyright (C) KolibriOS team 2004-2021. All rights reserved.    ;;
 ;; Distributed under terms of the GNU General Public License       ;;
 ;;                                                                 ;;
 ;;  ETHERNET.INC                                                   ;;
@@ -14,7 +14,7 @@
 ;;                                                                 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-$Revision: 7536 $
+$Revision: 9395 $
 
 ETH_FRAME_MINIMUM       = 60
 ETH_QUEUE_SIZE          = 255
@@ -62,22 +62,32 @@ macro   eth_init {
 
 }
 
-;-----------------------------------------------------------------;
-;                                                                 ;
-; eth_input: This function is called by ethernet drivers.         ;
-; Push the received ethernet packet onto the ethernet input queue.;
-;                                                                 ;
-;  IN:  [esp] = Pointer to buffer                                 ;
-;                                                                 ;
-;  OUT: /                                                         ;
-;                                                                 ;
-;-----------------------------------------------------------------;
 align 4
+; This function is called by ethernet drivers.
+; Push the received ethernet packet onto the ethernet input queue.
+;
+;  Input:
+;    [esp] = Pointer to buffer
+;    [esp + 4] = Return address (yes, really)
+;
+;  Example:
+;    push .retaddr
+;    push buf_addr
+;    jmp eth_input
 eth_input:
 
         pop     eax
-        pushf
-        cli
+
+if defined NETWORK_SANITY_CHECKS
+        cmp     eax, [net_buffs_low]
+        jb      .assert_mbuff
+        cmp     eax, [net_buffs_high]
+        ja      .assert_mbuff
+        test    eax, 0x7ff
+        jnz     .assert_mbuff
+end if
+
+        spin_lock_irqsave
 
         cmp     [ETH_frame_queued], ETH_QUEUE_SIZE
         jae     .full
@@ -92,7 +102,7 @@ eth_input:
         mov     [ETH_frame_tail], eax
         mov     [ebx + NET_BUFF.NextPtr], eax
 
-        popf
+        spin_unlock_irqrestore
 
 ; Mark it as being an Ethernet Frame
         mov     [eax + NET_BUFF.type], NET_BUFF_ETH
@@ -107,11 +117,20 @@ eth_input:
         ret
 
   .full:
-        DEBUGF  DEBUG_NETWORK_ERROR, "ETH incoming queue is full, discarding packet!\n"
-        popf
-        push    eax
-        call    net_buff_free
+        mov     ebx, [eax + NET_BUFF.device]
+        inc     [ebx + NET_DEVICE.packets_rx_ovr]
+        DEBUGF  DEBUG_NETWORK_VERBOSE, "ETH incoming queue is full, discarding packet!\n"
+        spin_unlock_irqrestore
+        stdcall net_buff_free, eax
         ret
+
+if defined NETWORK_SANITY_CHECKS
+  .assert_mbuff:
+        DEBUGF  DEBUG_NETWORK_ERROR, "eth_input: invalid buffer 0x%x\n", eax
+        DEBUGF  DEBUG_NETWORK_ERROR, "eth_input: caller=0x%x\n", [esp+4]
+        xor     eax, eax
+        ret
+end if
 
 
 
@@ -164,7 +183,7 @@ eth_process_input:
 
         DEBUGF  DEBUG_NETWORK_VERBOSE, "ETH_input: size=%u\n", ecx
         sub     ecx, sizeof.ETH_header
-        jb      .dump
+        jb      .err
 
 ; Set registers for protocol handlers
         lea     edx, [eax + sizeof.ETH_header]
@@ -188,10 +207,22 @@ eth_process_input:
 
         DEBUGF  DEBUG_NETWORK_VERBOSE, "ETH_input: Unknown packet type=%x\n", ax
 
-  .dump:
-        DEBUGF  DEBUG_NETWORK_VERBOSE, "ETH_input: dumping\n"
+  .drop:
+        mov     eax, [esp]
+        mov     eax, [eax + NET_BUFF.device]
+        inc     [eax + NET_DEVICE.packets_rx_drop]
+        DEBUGF  DEBUG_NETWORK_VERBOSE, "ETH_input: dropping\n"
         call    net_buff_free
         ret
+
+  .err:
+        mov     eax, [esp]
+        mov     eax, [eax + NET_BUFF.device]
+        inc     [eax + NET_DEVICE.packets_rx_err]
+        DEBUGF  DEBUG_NETWORK_VERBOSE, "ETH_input: invalid frame received\n"
+        call    net_buff_free
+        ret
+
 
 
 
@@ -216,7 +247,7 @@ eth_output:
         DEBUGF  DEBUG_NETWORK_VERBOSE, "ETH_output: size=%u device=%x\n", ecx, ebx
 
         cmp     ecx, [ebx + ETH_DEVICE.mtu]
-        ja      .exit
+        ja      .too_large
 
         push    ecx
         push    ax edx
@@ -225,6 +256,7 @@ eth_output:
         stdcall net_buff_alloc, ecx
         test    eax, eax
         jz      .out_of_ram
+
         mov     [eax + NET_BUFF.type], NET_BUFF_ETH
         mov     [eax + NET_BUFF.device], ebx
         mov     [eax + NET_BUFF.offset], NET_BUFF.data
@@ -256,13 +288,16 @@ eth_output:
         jmp     .done
 
   .out_of_ram:
-        DEBUGF  DEBUG_NETWORK_ERROR, "ETH_output: Out of ram!\n"
-        add     esp, 4+2+4
+        inc     [ebx + NET_DEVICE.packets_tx_drop]
+        DEBUGF  DEBUG_NETWORK_VERBOSE, "ETH_output: Out of ram!\n"
+        add     esp, 4+2
+        pop     ecx
         xor     eax, eax
         ret
 
-  .exit:
-        DEBUGF  DEBUG_NETWORK_ERROR, "ETH_output: Packet too large!\n"
+  .too_large:
+        inc     [eax + NET_DEVICE.packets_tx_err]
+        DEBUGF  DEBUG_NETWORK_VERBOSE, "ETH_output: Packet too large!\n"
         xor     eax, eax
         ret
 
@@ -285,7 +320,7 @@ eth_api:
         cmp     bh, NET_DEVICES_MAX
         ja      .error
         movzx   eax, bh
-        mov     eax, dword [NET_DRV_LIST + 4*eax]
+        mov     eax, dword [net_device_list + 4*eax]
         cmp     [eax + NET_DEVICE.device_type], NET_DEVICE_ETH
         jne     .error
 

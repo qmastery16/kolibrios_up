@@ -16,6 +16,13 @@ menubar_res main_menu,\
   en,'Encoding'	,mm.Encoding,onshow.recode ,\
   en,'Options'	,mm.Options ,onshow.options,\
 \
+  it,'File'	,mm.File    ,onshow.file   ,\
+  it,'Modificare'	,mm.Edit    ,onshow.edit   ,\
+  it,'Ricerca'	,mm.Search  ,onshow.search ,\
+  it,'Correre'	,mm.Run     ,onshow.run    ,\
+  it,'Codifica'	,mm.Encoding,onshow.recode ,\
+  it,'Opzioni'	,mm.Options ,onshow.options,\
+\
   et,'Fail'	,mm.File    ,onshow.file   ,\
   et,'Muuda'	,mm.Edit    ,onshow.edit   ,\
   et,'Otsi'	,mm.Search  ,onshow.search ,\
@@ -48,6 +55,15 @@ popup_res mm.File,\
   en,'Close'	 ,'Ctrl+F4'	,Close	,\
   en,'-','',,\
   en,'Exit'	 ,'Alt+X'	,Exit	,\
+\
+  it,'Nuovo'	 ,'Ctrl+N'	,New	,\
+  it,'Aperto...'	 ,'Ctrl+O'	,Open	,\
+  it,'Salva'	 ,'Ctrl+S'	,Save	,\
+  it,'Salva come...','Ctrl+Shift+S',SaveAs	,\
+  it,'-','',,\
+  it,'Chiudi'	 ,'Ctrl+F4'	,Close	,\
+  it,'-','',,\
+  it,'Uscita'	 ,'Alt+X'	,Exit	,\
 \
   et,'Uus'	,'Ctrl+N'	,New	,\
   et,'Ava...'	,'Ctrl+O'	,Open	,\
@@ -82,6 +98,13 @@ popup_res mm.Edit,\
   en,'-','',,\
   en,'Select all','Ctrl+A',SelAll,\
 \
+  it,'Taglio'	 ,'Ctrl+X',Cut   ,\
+  it,'Copia'	 ,'Ctrl+C',Copy  ,\
+  it,'Incolla'	 ,'Ctrl+V',Insert,\
+  it,'Elimina'	 ,'' ,Delete,\
+  it,'-','',,\
+  it,'Seleziona tutto','Ctrl+A',SelAll,\
+\
   et,'Lїika'	,'Ctrl+X',Cut	,\
   et,'Kopeeri'	,'Ctrl+C',Copy	,\
   et,'Kleebi'	,'Ctrl+V',Insert,\
@@ -109,6 +132,12 @@ popup_res mm.Search,\
   en,'Find next'  ,'F3'    ,FindNext,\
   en,'Replace...' ,'Ctrl+H',Replace ,\
 \
+  it,'Posizione...','Ctrl+G',Position,\
+  it,'-','',,\
+  it,'Trova...'    ,'Ctrl+F',Find    ,\
+  it,'Trova il prossimo'  ,'F3'    ,FindNext,\
+  it,'Sostituire...' ,'Ctrl+H',Replace ,\
+\
   et,'Positsioon...','Ctrl+G',Position,\
   et,'-','',,\
   et,'Leia...'      ,'Ctrl+F',Find    ,\
@@ -135,6 +164,13 @@ popup_res mm.Run,\
   en,'-','',,\
   en,'Debug board'	,''	  ,DbgBoard,\
   en,'System functions'	,''	  ,SysFuncs,\
+\
+  it,'Correre'		,'F9'	  ,Run     ,\
+  it,'Esegui nel debugger','F10',Debug   ,\
+  it,'Compilare','Ctrl+F9',Compile ,\
+  it,'-','',,\
+  it,'Scheda di debug'	,''	  ,DbgBoard,\
+  it,'Funzioni di sistema',''	  ,SysFuncs,\
 \
   et,'Kфivita'		,'F9'	  ,Run     ,\
   et,'Kфivita aastal siluri','F10',Debug   ,\
@@ -183,6 +219,17 @@ popup_res mm.Options,\
   en,'-','',,\
   en,'Appearance...'		,'',Appearance	,\
 \
+  it,'Ingrandire'		  ,'Ctrl +',ZoomIn	,\
+  it,'Rimpicciolisci'		  ,'Ctrl -',ZoomOut	,\
+  it,'-','',,\
+  it,'Numeri di riga'		,'',LineNumbers	,\
+  it,'Selezione sicura'		,'',SecureSel	,\
+  it,'Staffe automatiche'	,'',AutoBrackets,\
+  it,'Rientri automatici'	,'',AutoIndents	,\
+  it,'Combina spazi'	,'',OptimalFill	,\
+  it,'-','',,\
+  it,'Aspetto...'		,'',Appearance	,\
+\
   et,'Zoom in'		  ,'Ctrl +',ZoomIn	,\
   et,'Zoom out'		  ,'Ctrl -',ZoomOut	,\
   et,'-','',,\
@@ -206,92 +253,108 @@ popup_res mm.Options,\
   sp,'Apariencia...'		,'',Appearance
 
 lsz s_defname,\
-  en,<'Untitled',0>,\
   ru,<'Безымянный',0>,\
+  en,<'Untitled',0>,\
+  it,<'Senza titolo',0>,\
   et,<'Nimetu',0>,\
   sp,<'Sin tэtulo',0>
 
 lsz s_modified,\
   ru,'Изменено',\
   en,'Modified',\
+  it,'Modificato',\
   et,'Muudetud',\
   sp,'Modificado'
 
 lsz s_2filename,\
   ru,'Имя файла:',\
   en,'Filename:',\
+  en,'Nome del file:',\
   et,'Faili nimi:',\
   sp,'Nombre de archivo:'
 lsz s_2open,\
   ru,'Открыть',\
   en,'Open',\
+  it,'Aperto',\
   et,'Ava',\
   sp,'Abrir'
 lsz s_2save,\
   ru,'Сохранить',\
   en,'Save',\
+  it,'Salva',\
   et,'Salvesta',\
   sp,'Guardar'
 lsz s_2save_no,\
   ru,'Нет',\
   en,'No',\
+  it,'No',\
   et,'Ei',\
   sp,'No'
 lsz s_2find,\
   ru,'Найти',\
   en,'Find',\
+  it,'Trova',\
   et,'Leia',\
   sp,'Buscar'
 db ':'
 lsz s_2replace,\
   ru,'Заменить',\
   en,'Replace',\
+  it,'Sostituire',\
   et,'Asenda',\
   sp,'Reemplazar'
 db ':'
 lsz s_2cancel,\
   ru,'Отмена',\
   en,'Cancel',\
+  it,'Annulla',\
   et,'T№hista',\
   sp,'Cancelar'
 lsz s_color,\
   ru,'Цвет: 0x',\
   en,'Color: 0x',\
+  it,'Colore: 0x',\
   et,'Vфrv: 0x',\
   sp,'Color: 0x'
 lsz s_tabpos,\
   ru,'Расположение закладок',\
   en,'Tabs placement',\
+  it,'Posizionamento delle schede',\
   et,'Saki asetus',\
   sp,'Lugar de tabulador'
 
 lsz s_enter_filename,\
   ru,<'Введите имя файла',0>,\
   en,<'Enter filename',0>,\
+  it,<'Inserisci il nome del file',0>,\
   et,<'Sisesta faili nimi',0>,\
   sp,<'Ingresa el nombre del archivo',0>
 
 lsz s_ask_save,\
   ru,<'Желаете сохранить?',0>,\
   en,<'Would you like to save?',0>,\
+  it,<'Vorresti salvare?',0>,\
   et,<'Kas soovite salvestada?',0>,\	; Now correct
   sp,<'┐Quieres guardar?',0>
 
 lsz s_enter_text_to_find,\
   ru,<'Введите текст для поиска',0>,\
   en,<'Enter text to find',0>,\
+  it,<'Inserisci il testo per trovare',0>,\
   et,<'Sisesta otsitav tekst',0>,\
   sp,<'Ingresa el texto a buscar',0>
 
 lsz s_enter_text_to_replace,\
   ru,<'Введите текст для замены',0>,\
   en,<'Enter text to replace',0>,\
+  it,<'Inserisci il testo da sostituire',0>,\
   et,<'Sisesta asendatav tekst',0>,\
   sp,<'Ingresa el texto a reemplazar',0>
 
 lsz s_text_not_found,\
   ru,<'Достигнут конец файла, текст не найден',0>,\
   en,<'Reached end of file, text not found',0>,\
+  it,<'Raggiunta la fine del file, testo non trovato',0>,\
   et,<'Faili lїpp, teksti ei leitud',0>,\
   sp,<'Se llegє al final del archivo, texto no encontrado',0>
 
@@ -321,6 +384,19 @@ lszc s_fs_error,b,\
   en,<'FAT table is destroyed (9)',0>,\
   en,<'Access denied (10)',0>,\
   en,<'Device error (11)',0>,\
+\
+  it,<'Operazione eseguita correttamente (0)',0>,\
+  it,<'',0>,\
+  it,<'La funzione non e supportata per il file system specificato (2)', 0>, \
+  it,<'Unknown filesystem (3)',0>,\
+  it,<'',0>,\
+  it,<'Impossibile aprire il file (5)',0>,\
+  it,<'Operazione eseguita correttamente (6)',0>,\
+  it,<'Il puntatore si trova al di fuori della memoria dell',96,'applicazione (7)', 0>, \
+  it,<'Il disco e pieno (8)',0>,\
+  it,<'La tabella FAT e distrutta (9)',0>,\
+  it,<'Accesso negato (10)',0>,\
+  it,<'Errore dispositivo (11)',0>,\
 \
   et,<'Operatsioon kфivitati edukalt (0)',0>,\
   et,<'',0>,\
@@ -371,6 +447,17 @@ lszc s_appearance,b,\
   en,'Modified lines',\
   en,'Saved lines',\
 \
+  it,'Testo',\
+  it,'Sfondo',\
+  it,'Testo di selezione',\
+  it,'Sfondo di selezione',\
+  it,'Simboli',\
+  it,'Numeri',\
+  it,'Stringhe',\
+  it,'Commenti',\
+  it,'Linee modificate',\
+  it,'Linee salvate',\
+\
   et,'Tekst',\
   et,'Taust',\
   et,'Valitud tekst',\
@@ -396,6 +483,7 @@ lszc s_appearance,b,\
 lsz sysfuncs_filename,\
   ru,<'SYSFUNCR.TXT',0>,\
   en,<'SYSFUNCS.TXT',0>,\
+  it,<'SYSFUNCS.TXT',0>,\
   et,<'SYSFUNCET.TXT',0>,\
   sp,<'SYSFUNCS.TXT',0>
 

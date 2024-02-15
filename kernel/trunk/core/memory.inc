@@ -1,11 +1,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                              ;;
-;; Copyright (C) KolibriOS team 2004-2015. All rights reserved. ;;
+;; Copyright (C) KolibriOS team 2004-2022. All rights reserved. ;;
 ;; Distributed under terms of the GNU General Public License    ;;
 ;;                                                              ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-$Revision: 7132 $
+$Revision: 9917 $
 
 
 align 4
@@ -14,10 +14,10 @@ proc alloc_page
         pushfd
         cli
         push    ebx
-;//-
+
         cmp     [pg_data.pages_free], 1
         jle     .out_of_memory
-;//-
+
 
         mov     ebx, [page_start]
         mov     ecx, [page_end]
@@ -32,27 +32,27 @@ proc alloc_page
         xor     eax, eax
         ret
 .found:
-;//-
+
         dec     [pg_data.pages_free]
         jz      .out_of_memory
-;//-
+
         btr     [ebx], eax
         mov     [page_start], ebx
         sub     ebx, sys_pgmap
         lea     eax, [eax+ebx*8]
         shl     eax, 12
-;//-       dec [pg_data.pages_free]
+;       dec [pg_data.pages_free]
         pop     ebx
         popfd
         ret
-;//-
+
 .out_of_memory:
         mov     [pg_data.pages_free], 1
         xor     eax, eax
         pop     ebx
         popfd
         ret
-;//-
+
 endp
 
 align 4
@@ -65,20 +65,20 @@ proc alloc_pages stdcall, count:dword
         add     eax, 7
         shr     eax, 3
         mov     [count], eax
-;//-
+
         mov     ebx, [pg_data.pages_free]
         sub     ebx, 9
         js      .out_of_memory
         shr     ebx, 3
         cmp     eax, ebx
         jg      .out_of_memory
-;//-
+
         mov     ecx, [page_start]
         mov     ebx, [page_end]
 .find:
         mov     edx, [count]
         mov     edi, ecx
-.match:
+  .match:
         cmp     byte [ecx], 0xFF
         jne     .next
         dec     edx
@@ -86,14 +86,14 @@ proc alloc_pages stdcall, count:dword
         inc     ecx
         cmp     ecx, ebx
         jb      .match
-.out_of_memory:
-.fail:
+  .out_of_memory:
+  .fail:
         xor     eax, eax
         pop     edi
         pop     ebx
         popfd
         ret
-.next:
+  .next:
         inc     ecx
         cmp     ecx, ebx
         jb      .find
@@ -102,7 +102,7 @@ proc alloc_pages stdcall, count:dword
         popfd
         xor     eax, eax
         ret
-.ok:
+  .ok:
         sub     ecx, edi
         inc     ecx
         push    esi
@@ -131,7 +131,7 @@ map_page:
         and     eax, [pte_valid_mask]
         mov     ebx, [esp+8]               ; lin_addr
         shr     ebx, 12
-        mov     [page_tabs+ebx*4], eax
+        mov     [page_tabs + ebx*4], eax
         mov     eax, [esp+8]               ; lin_addr
         pop     ebx
         invlpg  [eax]
@@ -173,10 +173,10 @@ proc map_io_mem stdcall, base:dword, size:dword, flags:dword
         push    edi
         mov     eax, [size]
         add     eax, [base]
-        add     eax, 4095
-        and     eax, -4096
+        add     eax, PAGE_SIZE-1
+        and     eax, -PAGE_SIZE
         mov     ecx, [base]
-        and     ecx, -4096
+        and     ecx, -PAGE_SIZE
         sub     eax, ecx
         mov     [size], eax
 
@@ -185,7 +185,7 @@ proc map_io_mem stdcall, base:dword, size:dword, flags:dword
         jz      .fail
         push    eax
 
-        mov     edi, 0x1000
+        mov     edi, PAGE_SIZE
         mov     ebx, eax
         mov     ecx, [size]
         mov     edx, [base]
@@ -194,7 +194,7 @@ proc map_io_mem stdcall, base:dword, size:dword, flags:dword
         or      edx, [flags]
         and     edx, [pte_valid_mask]
 @@:
-        mov     [page_tabs+eax*4], edx
+        mov     [page_tabs + eax*4], edx
         invlpg  [ebx]
         inc     eax
         add     ebx, edi
@@ -203,7 +203,7 @@ proc map_io_mem stdcall, base:dword, size:dword, flags:dword
 
         pop     eax
         mov     edx, [base]
-        and     edx, 4095
+        and     edx, PAGE_SIZE-1
         add     eax, edx
 .fail:
         pop     edi
@@ -232,12 +232,12 @@ commit_pages:
         and     eax, [pte_valid_mask ]
         mov     edi, ebx
         shr     edi, 12
-        lea     edi, [page_tabs+edi*4]
+        lea     edi, [page_tabs + edi*4]
 @@:
         stosd
         invlpg  [ebx]
-        add     eax, 0x1000
-        add     ebx, 0x1000
+        add     eax, PAGE_SIZE
+        add     ebx, PAGE_SIZE
         loop    @B
 
         pop     edi
@@ -264,7 +264,7 @@ release_pages:
         mov     edi, eax
 
         shr     esi, 12
-        lea     esi, [page_tabs+esi*4]
+        lea     esi, [page_tabs + esi*4]
 
         push    ecx
         mov     ecx, pg_data.mutex
@@ -294,7 +294,7 @@ release_pages:
 
         mov     ebx, eax
 .next:
-        add     edi, 0x1000
+        add     edi, PAGE_SIZE
         add     esi, 4
         loop    @B
 
@@ -327,7 +327,7 @@ unmap_pages:
 @@:
         stosd
         invlpg  [edx]
-        add     edx, 0x1000
+        add     edx, PAGE_SIZE
         loop    @b
 
         pop     edi
@@ -340,9 +340,9 @@ proc map_page_table stdcall, lin_addr:dword, phis_addr:dword
         mov     ebx, [lin_addr]
         shr     ebx, 22
         mov     eax, [phis_addr]
-        and     eax, not 0xFFF
+        and     eax, -PAGE_SIZE
         or      eax, PG_UWR
-        mov     dword [master_tab+ebx*4], eax
+        mov     dword [master_tab + ebx*4], eax
         mov     eax, [lin_addr]
         shr     eax, 10
         add     eax, page_tabs
@@ -389,12 +389,12 @@ proc create_trampoline_pgmap
 ; Therefore, allocate memory with kernel_alloc,
 ; this will allocate physical page and a linear address somewhere,
 ; and deallocate only linear address with free_kernel_space.
-        stdcall kernel_alloc, 0x1000
+        stdcall kernel_alloc, PAGE_SIZE
         mov     edi, eax
         mov     esi, master_tab
-        mov     ecx, 1024
+        mov     ecx, PAGE_SIZE/4
         rep movsd
-        mov     ecx, [master_tab+(OS_BASE shr 20)]
+        mov     ecx, [master_tab + (OS_BASE shr 20)]
         mov     [eax], ecx
         mov     edi, eax
         call    get_pg_addr
@@ -412,19 +412,19 @@ proc new_mem_resize stdcall, new_size:dword
         push    edi
 
         mov     edx, [current_slot]
-        mov     ebx, [edx+APPDATA.process]
+        mov     ebx, [edx + APPDATA.process]
 
-        cmp     [ebx+PROC.heap_base], 0
+        cmp     [ebx + PROC.heap_base], 0
         jne     .exit
 
         mov     edi, [new_size]
-        add     edi, 4095
-        and     edi, not 4095
+        add     edi, PAGE_SIZE-1
+        and     edi, -PAGE_SIZE
         mov     [new_size], edi
 
-        mov     esi, [ebx+PROC.mem_used]
-        add     esi, 4095
-        and     esi, not 4095
+        mov     esi, [ebx + PROC.mem_used]
+        add     esi, PAGE_SIZE-1
+        and     esi, -PAGE_SIZE
 
         cmp     edi, esi
         ja      .expand
@@ -437,17 +437,17 @@ proc new_mem_resize stdcall, new_size:dword
         mov     ecx, pg_data.mutex
         call    mutex_lock
 @@:
-        mov     eax, [app_page_tabs+edi*4]
+        mov     eax, [app_page_tabs + edi*4]
         test    eax, 1
         jz      .next
 
-        mov     dword [app_page_tabs+edi*4], 0
+        mov     dword [app_page_tabs + edi*4], 0
         invlpg  [ebx]
         call    free_page
 
 .next:
         inc     edi
-        add     ebx, 0x1000
+        add     ebx, PAGE_SIZE
         cmp     edi, esi
         jb      @B
 
@@ -457,8 +457,8 @@ proc new_mem_resize stdcall, new_size:dword
 .update_size:
         mov     edx, [current_slot]
         mov     ebx, [new_size]
-        mov     edx, [edx+APPDATA.process]
-        mov     [edx+PROC.mem_used], ebx
+        mov     edx, [edx + APPDATA.process]
+        mov     [edx + PROC.mem_used], ebx
 .exit:
         pop     edi
         pop     esi
@@ -538,7 +538,7 @@ endp
 ;  eax= linear address
 ;
 ; retval
-;  eax= phisical page address
+;  eax= physical page address
 
 align 4
 get_pg_addr:
@@ -546,9 +546,9 @@ get_pg_addr:
         cmp     eax, 0x400000
         jb      @f
         shr     eax, 12
-        mov     eax, [page_tabs+(eax+(OS_BASE shr 12))*4]
+        mov     eax, [page_tabs + (eax+(OS_BASE shr 12))*4]
 @@:
-        and     eax, 0xFFFFF000
+        and     eax, -PAGE_SIZE
         ret
 
 
@@ -567,14 +567,14 @@ proc page_fault_handler
         mov     eax, [pf_err_code]
 
         cmp     ebx, OS_BASE      ;ebx == .err_addr
-        jb      .user_space       ;страница в памяти приложения ;
+        jb      .user_space       ;page in application memory
 
         cmp     ebx, page_tabs
-        jb      .kernel_space     ;страница в памяти ядра
+        jb      .kernel_space     ;page in kernel memory
 
         cmp     ebx, kernel_tabs
-        jb      .alloc;.app_tabs  ;таблицы страниц приложения ;
-                                  ;просто создадим одну
+        jb      .alloc;.app_tabs  ;page tables of application ;
+                                  ;simply create one
 .core_tabs:
 .fail:  ;simply return to caller
         mov     esp, ebp
@@ -583,21 +583,21 @@ proc page_fault_handler
 
 .user_space:
         test    eax, PG_READ
-        jnz     .err_access       ;Страница присутствует
-                                  ;Ошибка доступа ?
+        jnz     .err_access       ;Page presents
+                                  ;Access error ?
 
         shr     ebx, 12
         mov     ecx, ebx
         shr     ecx, 10
-        mov     edx, [master_tab+ecx*4]
+        mov     edx, [master_tab + ecx*4]
         test    edx, PG_READ
-        jz      .fail             ;таблица страниц не создана
-                                  ;неверный адрес в программе
+        jz      .fail             ;page table is not created
+                                  ;incorrect address in program
 
-        mov     eax, [page_tabs+ebx*4]
+        mov     eax, [page_tabs + ebx*4]
         test    eax, 2
-        jz      .fail             ;адрес не зарезервирован для ;
-                                  ;использования. Ошибка
+        jz      .fail             ;address is not reserved for usage. Error
+                                  
 .alloc:
         call    alloc_page
         test    eax, eax
@@ -606,7 +606,7 @@ proc page_fault_handler
         stdcall map_page, [.err_addr], eax, PG_UWR
 
         mov     edi, [.err_addr]
-        and     edi, 0xFFFFF000
+        and     edi, -PAGE_SIZE
         mov     ecx, 1024
         xor     eax, eax
        ;cld     ;caller is duty for this
@@ -619,21 +619,21 @@ proc page_fault_handler
 .err_access:
 ; access denied? this may be a result of copy-on-write protection for DLL
 ; check list of HDLLs
-        and     ebx, not 0xFFF
+        and     ebx, -PAGE_SIZE
         mov     eax, [current_process]
-        mov     eax, [eax+PROC.dlls_list_ptr]
+        mov     eax, [eax + PROC.dlls_list_ptr]
         test    eax, eax
         jz      .fail
-        mov     esi, [eax+HDLL.fd]
+        mov     esi, [eax + HDLL.fd]
 .scan_hdll:
         cmp     esi, eax
         jz      .fail
         mov     edx, ebx
-        sub     edx, [esi+HDLL.base]
-        cmp     edx, [esi+HDLL.size]
+        sub     edx, [esi + HDLL.base]
+        cmp     edx, [esi + HDLL.size]
         jb      .fault_in_hdll
 .scan_hdll.next:
-        mov     esi, [esi+HDLL.fd]
+        mov     esi, [esi + HDLL.fd]
         jmp     .scan_hdll
 .fault_in_hdll:
 ; allocate new page, map it as rw and copy data
@@ -643,25 +643,25 @@ proc page_fault_handler
         stdcall map_page, ebx, eax, PG_UWR
         mov     edi, ebx
         mov     ecx, 1024
-        sub     ebx, [esi+HDLL.base]
-        mov     esi, [esi+HDLL.parent]
-        mov     esi, [esi+DLLDESCR.data]
+        sub     ebx, [esi + HDLL.base]
+        mov     esi, [esi + HDLL.parent]
+        mov     esi, [esi + DLLDESCR.data]
         add     esi, ebx
         rep movsd
         jmp     .exit
 
 .kernel_space:
         test    eax, PG_READ
-        jz      .fail   ;страница не присутствует
+        jz      .fail   ;page does not present
 
         test    eax, 12 ;U/S (+below)
-        jnz     .fail   ;приложение обратилось к памяти
-                        ;ядра
+        jnz     .fail   ;application requested kernel memory
+                        
        ;test    eax, 8
-       ;jnz     .fail   ;установлен зарезервированный бит
-                        ;в таблицах страниц. добавлено в P4/Xeon
+       ;jnz     .fail   ;the reserved bit is set in page tables. Added in P4/Xeon
+                        
 
-;попытка записи в защищённую страницу ядра
+;an attempt to write to a protected kernel page
 
         cmp     ebx, tss._io_map_0
         jb      .fail
@@ -680,17 +680,17 @@ proc page_fault_handler
         stdcall map_page, [.err_addr], eax, dword PG_SWR
         pop     eax
         mov     edi, [.err_addr]
-        and     edi, -4096
+        and     edi, -PAGE_SIZE
         lea     esi, [edi+(not tss._io_map_0)+1]; -tss._io_map_0
 
         mov     ebx, esi
         shr     ebx, 12
         mov     edx, [current_slot]
         or      eax, PG_SWR
-        mov     [edx+APPDATA.io_map+ebx*4], eax
+        mov     [edx + APPDATA.io_map + ebx*4], eax
 
         add     esi, [default_io_map]
-        mov     ecx, 4096/4
+        mov     ecx, PAGE_SIZE/4
        ;cld     ;caller is duty for this
         rep movsd
         jmp     .exit
@@ -709,24 +709,24 @@ proc map_mem_ipc stdcall, lin_addr:dword,slot:dword,\
         jz      .exit
 
         mov     eax, [slot]
-        shl     eax, 8
-        mov     eax, [SLOT_BASE+eax+APPDATA.process]
+        shl     eax, BSF sizeof.APPDATA
+        mov     eax, [SLOT_BASE + eax + APPDATA.process]
         test    eax, eax
         jz      .exit
 
         mov     [process], eax
         mov     ebx, [ofs]
         shr     ebx, 22
-        mov     eax, [eax+PROC.pdt_0+ebx*4]                 ;get page table
+        mov     eax, [eax + PROC.pdt_0 + ebx*4]                 ;get page table
         mov     esi, [ipc_ptab]
-        and     eax, 0xFFFFF000
+        and     eax, -PAGE_SIZE
         jz      .exit
         stdcall map_page, esi, eax, PG_SWR
 @@:
         mov     edi, [lin_addr]
-        and     edi, 0xFFFFF000
+        and     edi, -PAGE_SIZE
         mov     ecx, [buf_size]
-        add     ecx, 4095
+        add     ecx, PAGE_SIZE-1
         shr     ecx, 12
         inc     ecx                  ; ???????????
 
@@ -748,8 +748,8 @@ proc map_mem_ipc stdcall, lin_addr:dword,slot:dword,\
 
         inc     ebx
         mov     eax, [process]
-        mov     eax, [eax+PROC.pdt_0+ebx*4]
-        and     eax, 0xFFFFF000
+        mov     eax, [eax + PROC.pdt_0 + ebx*4]
+        and     eax, -PAGE_SIZE
         jz      .exit
 
         stdcall map_page, esi, eax, PG_SWR
@@ -772,24 +772,24 @@ proc map_memEx stdcall, lin_addr:dword,slot:dword,\
         jz      .exit
 
         mov     eax, [slot]
-        shl     eax, 8
-        mov     eax, [SLOT_BASE+eax+APPDATA.process]
+        shl     eax, BSF sizeof.APPDATA
+        mov     eax, [SLOT_BASE + eax + APPDATA.process]
         test    eax, eax
         jz      .exit
 
         mov     [process], eax
         mov     ebx, [ofs]
         shr     ebx, 22
-        mov     eax, [eax+PROC.pdt_0+ebx*4]                 ;get page table
+        mov     eax, [eax + PROC.pdt_0 + ebx*4]                 ;get page table
         mov     esi, [proc_mem_tab]
-        and     eax, 0xFFFFF000
+        and     eax, -PAGE_SIZE
         jz      .exit
         stdcall map_page, esi, eax, PG_SWR
 @@:
         mov     edi, [lin_addr]
-        and     edi, 0xFFFFF000
+        and     edi, -PAGE_SIZE
         mov     ecx, [buf_size]
-        add     ecx, 4095
+        add     ecx, PAGE_SIZE-1
         shr     ecx, 12
         inc     ecx                  ; ???????????
 
@@ -811,8 +811,8 @@ proc map_memEx stdcall, lin_addr:dword,slot:dword,\
 
         inc     ebx
         mov     eax, [process]
-        mov     eax, [eax+PROC.pdt_0+ebx*4]
-        and     eax, 0xFFFFF000
+        mov     eax, [eax + PROC.pdt_0 + ebx*4]
+        and     eax, -PAGE_SIZE
         jz      .exit
 
         stdcall map_page, esi, eax, PG_SWR
@@ -829,7 +829,7 @@ endp
 ; out: CF cleared <=> failed
 ; destroys: only eax
 proc safe_map_page stdcall, slot:dword, req_access:dword, ofs:dword
-        mov     eax, [esi+edx*4]
+        mov     eax, [esi + edx*4]
         test    al, PG_READ
         jz      .not_present
         test    al, PG_WRITE
@@ -851,7 +851,7 @@ proc safe_map_page stdcall, slot:dword, req_access:dword, ofs:dword
         test    eax, eax
         jz      .fail
         or      al, PG_UWR
-        mov     [esi+edx*4], eax
+        mov     [esi + edx*4], eax
         jmp     .map
 .resolve_readonly:
 ; readonly page, probably copy-on-write
@@ -864,21 +864,21 @@ proc safe_map_page stdcall, slot:dword, req_access:dword, ofs:dword
         cld
         push    ebx ecx
         mov     eax, [slot]
-        shl     eax, 8
-        mov     eax, [SLOT_BASE+eax+APPDATA.process]
-        mov     eax, [eax+PROC.dlls_list_ptr]
+        shl     eax, BSF sizeof.APPDATA
+        mov     eax, [SLOT_BASE + eax + APPDATA.process]
+        mov     eax, [eax + PROC.dlls_list_ptr]
         test    eax, eax
         jz      .no_hdll
-        mov     ecx, [eax+HDLL.fd]
+        mov     ecx, [eax + HDLL.fd]
 .scan_hdll:
         cmp     ecx, eax
         jz      .no_hdll
         mov     ebx, [ofs]
-        and     ebx, not 0xFFF
-        sub     ebx, [ecx+HDLL.base]
-        cmp     ebx, [ecx+HDLL.size]
+        and     ebx, -PAGE_SIZE
+        sub     ebx, [ecx + HDLL.base]
+        cmp     ebx, [ecx + HDLL.size]
         jb      .hdll_found
-        mov     ecx, [ecx+HDLL.fd]
+        mov     ecx, [ecx + HDLL.fd]
         jmp     .scan_hdll
 .no_hdll:
         pop     ecx ebx
@@ -887,17 +887,17 @@ proc safe_map_page stdcall, slot:dword, req_access:dword, ofs:dword
         ret
 .hdll_found:
 ; allocate page, save it in page table, map it, copy contents from base
-        mov     eax, [ecx+HDLL.parent]
-        add     ebx, [eax+DLLDESCR.data]
+        mov     eax, [ecx + HDLL.parent]
+        add     ebx, [eax + DLLDESCR.data]
         call    alloc_page
         test    eax, eax
         jz      .no_hdll
         or      al, PG_UWR
-        mov     [esi+edx*4], eax
+        mov     [esi + edx*4], eax
         stdcall map_page, edi, eax, [req_access]
         push    esi edi
         mov     esi, ebx
-        mov     ecx, 4096/4
+        mov     ecx, PAGE_SIZE/4
         rep movsd
         pop     edi esi
         pop     ecx ebx
@@ -922,21 +922,21 @@ sys_IPC:
         mov     eax, [current_slot]
         pushf
         cli
-        mov     [eax+APPDATA.ipc_start], ecx    ;set fields in extended information area
-        mov     [eax+APPDATA.ipc_size], edx
+        mov     [eax + APPDATA.ipc_start], ecx    ;set fields in extended information area
+        mov     [eax + APPDATA.ipc_size], edx
 
         add     edx, ecx
-        add     edx, 4095
-        and     edx, not 4095
+        add     edx, PAGE_SIZE-1
+        and     edx, -PAGE_SIZE
 
 .touch:
         mov     eax, [ecx]
-        add     ecx, 0x1000
+        add     ecx, PAGE_SIZE
         cmp     ecx, edx
         jb      .touch
 
         popf
-        mov     [esp+32], ebx   ;ebx=0
+        mov     [esp + SYSCALL_STACK.eax], ebx   ;ebx=0
         ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -946,11 +946,11 @@ sys_IPC:
         jnz     @f
 
         stdcall sys_ipc_send, ecx, edx, esi
-        mov     [esp+32], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 @@:
         or      eax, -1
-        mov     [esp+32], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 
 proc sys_ipc_send stdcall, PID:dword, msg_addr:dword, msg_size:dword
@@ -970,8 +970,8 @@ proc sys_ipc_send stdcall, PID:dword, msg_addr:dword, msg_size:dword
         jz      .no_pid
 
         mov     [dst_slot], eax
-        shl     eax, 8
-        mov     edi, [eax+SLOT_BASE+APPDATA.ipc_start] ;is ipc area defined?
+        shl     eax, BSF sizeof.APPDATA
+        mov     edi, [SLOT_BASE + eax + APPDATA.ipc_start] ;is ipc area defined?
         test    edi, edi
         jz      .no_ipc_area
 
@@ -979,7 +979,7 @@ proc sys_ipc_send stdcall, PID:dword, msg_addr:dword, msg_size:dword
         and     ebx, 0xFFF
         mov     [dst_offset], ebx
 
-        mov     esi, [eax+SLOT_BASE+APPDATA.ipc_size]
+        mov     esi, [SLOT_BASE + eax + APPDATA.ipc_size]
         mov     [buf_size], esi
 
         mov     ecx, [ipc_tmp]
@@ -1007,8 +1007,8 @@ proc sys_ipc_send stdcall, PID:dword, msg_addr:dword, msg_size:dword
         ja      .buffer_overflow       ;esi<0 - not enough memory in buffer
 
         mov     dword [edi+4], ebx
-        mov     eax, [TASK_BASE]
-        mov     eax, [eax+0x04]        ;eax - our PID
+        mov     eax, [current_slot]
+        mov     eax, [eax + APPDATA.tid]        ;eax - our PID
         add     edi, edx
         mov     [edi], eax
         mov     ecx, [msg_size]
@@ -1016,7 +1016,7 @@ proc sys_ipc_send stdcall, PID:dword, msg_addr:dword, msg_size:dword
         mov     [edi+4], ecx
         add     edi, 8
         mov     esi, [msg_addr]
-       ;    add esi, new_app_base
+       ;    add esi, std_application_base_address
         cld
         rep movsb
 
@@ -1024,26 +1024,26 @@ proc sys_ipc_send stdcall, PID:dword, msg_addr:dword, msg_size:dword
         mov     edx, ebx
         shr     ebx, 12
         xor     eax, eax
-        mov     [page_tabs+ebx*4], eax
+        mov     [page_tabs + ebx*4], eax
         invlpg  [edx]
 
         mov     ebx, [ipc_pdir]
         mov     edx, ebx
         shr     ebx, 12
         xor     eax, eax
-        mov     [page_tabs+ebx*4], eax
+        mov     [page_tabs + ebx*4], eax
         invlpg  [edx]
 
         mov     ebx, [ipc_ptab]
         mov     edx, ebx
         shr     ebx, 12
         xor     eax, eax
-        mov     [page_tabs+ebx*4], eax
+        mov     [page_tabs + ebx*4], eax
         invlpg  [edx]
 
         mov     eax, [dst_slot]
-        shl     eax, 8
-        or      [eax+SLOT_BASE+0xA8], dword 0x40
+        shl     eax, BSF sizeof.APPDATA
+        or      [SLOT_BASE + eax + APPDATA.occurred_events], EVENT_IPC
         push    0
         jmp     .ret
 .no_pid:
@@ -1079,22 +1079,22 @@ sysfn_meminfo:
         mov     eax, [pg_data.pages_count]
         mov     [ecx], eax
         shl     eax, 12
-        mov     [esp+32], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         mov     eax, [pg_data.pages_free]
-        mov     [ecx+4], eax
+        mov     [ecx + 4], eax
         mov     eax, [pg_data.pages_faults]
-        mov     [ecx+8], eax
+        mov     [ecx + 8], eax
         mov     eax, [heap_size]
-        mov     [ecx+12], eax
+        mov     [ecx + 12], eax
         mov     eax, [heap_free]
-        mov     [ecx+16], eax
+        mov     [ecx + 16], eax
         mov     eax, [heap_blocks]
-        mov     [ecx+20], eax
+        mov     [ecx + 20], eax
         mov     eax, [free_blocks]
-        mov     [ecx+24], eax
+        mov     [ecx + 24], eax
         ret
 .fail:
-        or      dword [esp+32], -1
+        or      dword [esp + SYSCALL_STACK.eax], -1
         ret
 
 align 4
@@ -1103,28 +1103,28 @@ f68:
         jbe     sys_sheduler
         cmp     ebx, 11
         jb      undefined_syscall
-        cmp     ebx, 28
+        cmp     ebx, 31
         ja      undefined_syscall
         xor     eax, eax
-        jmp     dword [f68call+ebx*4-11*4]
+        jmp     dword [f68call + ebx*4-11*4]
 .11:
         call    init_heap
-        mov     [esp+SYSCALL_STACK._eax], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 .12:
         stdcall user_alloc, ecx
-        mov     [esp+SYSCALL_STACK._eax], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 .13:
         stdcall user_free, ecx
-        mov     [esp+SYSCALL_STACK._eax], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 .14:
         cmp     ecx, OS_BASE
         jae     .fail
         mov     edi, ecx
         call    get_event_ex
-        mov     [esp+SYSCALL_STACK._eax], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 .16:
         test    ecx, ecx
@@ -1132,25 +1132,25 @@ f68:
         cmp     ecx, OS_BASE
         jae     .fail
         stdcall get_service, ecx
-        mov     [esp+SYSCALL_STACK._eax], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 .17:
         call    srv_handlerEx   ;ecx
-        mov     [esp+SYSCALL_STACK._eax], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 .18:
         mov     eax, edx
 .19:
-        cmp     ecx, OS_BASE
-        jae     .fail
+        stdcall is_string_userspace, ecx
+        jnz     .fail
         stdcall load_library, ecx, eax
-        mov     [esp+SYSCALL_STACK._eax], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 .20:
         mov     eax, edx
         mov     ebx, ecx
         call    user_realloc            ;in: eax = pointer, ebx = new size
-        mov     [esp+SYSCALL_STACK._eax], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 .21:
         cmp     ecx, OS_BASE
@@ -1158,48 +1158,48 @@ f68:
         cmp     edx, OS_BASE
         jae     .fail
         stdcall load_pe_driver, ecx, edx
-        mov     [esp+SYSCALL_STACK._eax], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 .22:
         cmp     ecx, OS_BASE
         jae     .fail
         stdcall shmem_open, ecx, edx, esi
-        mov     [esp+SYSCALL_STACK._edx], edx
-        mov     [esp+SYSCALL_STACK._eax], eax
+        mov     [esp + SYSCALL_STACK.edx], edx
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 .23:
         cmp     ecx, OS_BASE
         jae     .fail
         stdcall shmem_close, ecx
-        mov     [esp+SYSCALL_STACK._eax], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 .24:
         mov     eax, [current_slot]
-        xchg    ecx, [eax+APPDATA.exc_handler]
-        xchg    edx, [eax+APPDATA.except_mask]
-        mov     [esp+SYSCALL_STACK._ebx], edx
-        mov     [esp+SYSCALL_STACK._eax], ecx
+        xchg    ecx, [eax + APPDATA.exc_handler]
+        xchg    edx, [eax + APPDATA.except_mask]
+        mov     [esp + SYSCALL_STACK.ebx], edx
+        mov     [esp + SYSCALL_STACK.eax], ecx
         ret
 .25:
         cmp     ecx, 32
         jae     .fail
         mov     eax, [current_slot]
-        btr     [eax+APPDATA.except_mask], ecx
-        setc    byte[esp+SYSCALL_STACK._eax]
+        btr     [eax + APPDATA.except_mask], ecx
+        setc    byte[esp + SYSCALL_STACK.eax]
         jecxz   @f
-        bts     [eax+APPDATA.except_mask], ecx
+        bts     [eax + APPDATA.except_mask], ecx
 @@:
         ret
 .26:
         stdcall user_unmap, ecx, edx, esi
-        mov     [esp+SYSCALL_STACK._eax], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 .27:
         cmp     ecx, OS_BASE
         jae     .fail
         stdcall load_file_umode, ecx
-        mov     [esp+SYSCALL_STACK._edx], edx
-        mov     [esp+SYSCALL_STACK._eax], eax
+        mov     [esp + SYSCALL_STACK.edx], edx
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 .28:
         cmp     ecx, OS_BASE
@@ -1214,14 +1214,97 @@ f68:
         test    eax, eax
         jz      @f
         stdcall load_file_umode, ebp
-        mov     [esp+SYSCALL_STACK._edx], edx
+        mov     [esp + SYSCALL_STACK.edx], edx
 @@:
-        mov     [esp+SYSCALL_STACK._eax], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         stdcall kernel_free, ebp
         ret
 
+.29:
+        stdcall user_ring, ecx
+        mov     [esp + SYSCALL_STACK.eax], eax
+        ret
+
+;  unload driver
+.30:                         ; ecx = handl driver edx = cmdline
+        mov     eax, -1
+        cmp     edx, OS_BASE
+        jae     .fail
+        cmp     ecx, OS_BASE
+        jbe     .fail
+        cmp     [ecx+SRV.magic], ' SRV'
+        jne     .fail
+        cmp     [ecx+SRV.size], sizeof.SRV
+        jne     .fail
+
+        mov     eax, [ecx + SRV.entry]
+        test    eax, eax
+        jz      .fail
+        push    ecx    ;save handl
+
+        push    edx         ;cmdline
+        push    DRV_EXIT
+        call    eax   ;the result is not checked
+        lea     esp, [esp+8]
+        push    ecx
+
+        mov     ebx, [ecx + SRV.base]
+        mov     eax, -2 ;error free RAM
+        test    ebx, ebx
+        jz      .fail
+        stdcall kernel_free, ebx ;del driver
+
+        mov     eax, [ecx + SRV.fd]
+        mov     edx, [ecx + SRV.bk]
+        mov     [edx + SRV.fd], eax
+        mov     [eax + SRV.bk], edx
+        stdcall free, ecx
+        ;dec     [count_services]
+
+        mov     [esp + SYSCALL_STACK.eax], eax
+        ret
+.31:    ; get list service
+        test    ecx, ecx
+        jz      .fail   ; get count
+        dec     ecx
+        jnz     @f    ;1 - get pointer first and last  structure
+
+        mov     ebx, [srv.fd]
+        mov     ecx, [srv.bk]
+        mov     [esp + SYSCALL_STACK.ebx], ebx  ;fd
+        mov     [esp + SYSCALL_STACK.ecx], ecx  ;bk
+        mov     [esp + SYSCALL_STACK.eax], 0
+        ret
+@@:
+        dec     ecx
+        jnz     .fail  ; 2 - get info for SRV structure
+
+        mov     eax, -1
+        cmp     edx, OS_BASE    ; edx = pointer on structure
+        jbe     .fail
+        stdcall is_region_userspace, edi, 40 ;16+4*6=40 <-max size buffer
+        jnz     .fail                        ; edi = pointer on buffer
+        cmp     [edx + SRV.magic], ' SRV'
+        jne     .fail
+        cmp     [edx + SRV.size], sizeof.SRV
+        jne     .fail
+
+        mov     esi, edx
+        movsd     ; name service 16 byte
+        movsd
+        movsd
+        movsd
+        lea     esi, [edx+SRV.fd]
+        movsd   ; SRV.fd
+        movsd   ; SRV.bk
+        movsd   ; SRV.base
+        movsd   ; SRV.entry
+        movsd   ; SRV.srv_proc
+        ;movsd   ; SRV.srv_proc_ex
+
+        xor     eax, eax
 .fail:
-        mov     [esp+SYSCALL_STACK._eax], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 
 align 4
@@ -1245,6 +1328,9 @@ f68call:   ; keep this table closer to main code
            dd f68.26   ; user_unmap
            dd f68.27   ; load_file_umode
            dd f68.28   ; loadFileUnicode
+           dd f68.29   ; user_ring
+           dd f68.30   ; unload_driver
+           dd f68.31   ; get_driver_info
 
 align 4
 proc load_pe_driver stdcall, file:dword, cmdline:dword
@@ -1255,18 +1341,22 @@ proc load_pe_driver stdcall, file:dword, cmdline:dword
         jz      .fail
 
         mov     esi, eax
+        push    ebx  ;  base addres driver
         push    [cmdline]
         push    DRV_ENTRY
         call    eax
         pop     ecx
         pop     ecx
+        pop     ebx
         test    eax, eax
-        jz      .fail
+        jz      .fail_init
 
-        mov     [eax+SRV.entry], esi
+        mov     [eax + SRV.base], ebx
+        mov     [eax + SRV.entry], esi
         pop     esi
         ret
-
+.fail_init:
+        stdcall kernel_free, ebx  ;clear memory driver
 .fail:
         xor     eax, eax
         pop     esi
@@ -1311,8 +1401,8 @@ proc create_ring_buffer stdcall, size:dword, flags:dword
         shl     edx, 2
         shr     edi, 10
 @@:
-        mov     [page_tabs+edi], eax
-        mov     [page_tabs+edi+edx], eax
+        mov     [page_tabs + edi], eax
+        mov     [page_tabs + edi + edx], eax
         invlpg  [ebx]
         invlpg  [ebx+0x10000]
         add     eax, 0x1000

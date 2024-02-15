@@ -1,4 +1,4 @@
-#define MEMSIZE 4096*20
+#define MEMSIZE 1024*80
 
 //===================================================//
 //                                                   //
@@ -8,14 +8,11 @@
 
 #include "../lib/gui.h"
 #include "../lib/list_box.h"
-#include "../lib/io.h"
 #include "../lib/collection.h"
 #include "../lib/patterns/restart_process.h"
 
 #include "../lib/mem.h" 
 
-#include "../lib/obj/libio.h"
-#include "../lib/obj/libimg.h"
 #include "../lib/obj/libini.h"
 
 //===================================================//
@@ -26,9 +23,11 @@
 
 int current_process_id = 0;
 int proc_list[256];
-collection attached;
+collection attached=0;
 
 llist list;
+
+_ini ini = { "/sys/settings/appicons.ini", "icons"};
 
 proc_info Form;
 proc_info Process;
@@ -60,12 +59,7 @@ dword COLOR_TEXT    = 0xFFFfff;
 void main()
 {
 	int btn;
-	load_dll(libio,  #libio_init,1);
-	load_dll(libimg, #libimg_init,1);
 	load_dll(libini, #lib_init,1);
-
-	Libimg_LoadImage(#skin, "/sys/icons32.png");
-	Libimg_FillTransparent(skin.image, skin.w, skin.h, COLOR_BG);
 
 	ini_get_int stdcall ("/sys/appicons.ini", "taskbar", "attachement", ATTACHEMENT_BOTTOM); 
 	attachement = EAX;
@@ -76,11 +70,8 @@ void main()
 	GetProcessInfo(#Form, SelfInfo);
 	SetWindowLayerBehaviour(-1, ZPOS_DESKTOP);
 	SetEventMask(EVM_REDRAW+EVM_KEY+EVM_BUTTON+EVM_MOUSE+EVM_MOUSE_FILTER);
-	loop()
+	loop() switch(@WaitEventTimeout(50))
 	{
-	  WaitEventTimeout(50);
-	  switch(EAX & 0xFF)
-	  {
 	   	case evMouse:
 			if (!CheckActiveProcess(Form.ID)) break;
 			mouse.get();
@@ -95,7 +86,7 @@ void main()
 			}
 			break;
 		case evButton:
-			btn = GetButtonID();
+			btn = @GetButtonID();
 			btn -= 100;
 			if (btn < attached.count) RunProgram(attached.get(btn), NULL);
 			else EventSetActiveProcess(btn);
@@ -105,7 +96,6 @@ void main()
 			list.SetSizes(0, 0, Form.width+1, Form.height+2, CELLH);
 		default:
 			DrawProcessList();
-	  }
 	}
 }
 
@@ -158,19 +148,12 @@ void DrawProcessList()
 	{
 		if (proc_list[i+list.first]==0) {
 			status_color = COLOR_BG;
-			ini_get_int stdcall (
-				"/sys/appicons.ini", 
-				"icons", 
-				attached.get(i+list.first)+strrchr(attached.get(i+list.first),'/'),
-				0
-				); 
-			icon_n = EAX;
+			icon_n = ini.GetInt(attached.get(i+list.first)+strrchr(attached.get(i+list.first),'/'), 2);
 		} 
 		else {
 			GetProcessInfo(#Process, proc_list[i+list.first]);
 			strlwr(#Process.name);
-			ini_get_int stdcall ("/sys/appicons.ini", "icons", #Process.name, 0); 
-			icon_n = EAX;
+			icon_n = ini.GetInt(#Process.name, 2);
 			if (CheckActiveProcess(Process.ID)) && (Process.status_window!=2) {
 				current_process_id = Process.ID;
 				status_color = COLOR_ACTIVE;
@@ -181,7 +164,7 @@ void DrawProcessList()
 		} 
 		DrawWideRectangle(posx, posy, 40, 40, CELL_PADDING, COLOR_BG);
 		DefineButton(posx, posy, CELLW-1, CELLH, 100+i+BT_HIDE+BT_NOFRAME, NULL);
-		img_draw stdcall(skin.image, posx+CELL_PADDING, posy+CELL_PADDING, 32, 32, 0, 32*icon_n);
+		draw_icon_32(posx+CELL_PADDING, posy+CELL_PADDING, COLOR_BG, icon_n);
 
 		if (ATTACHEMENT_BOTTOM==attachement) DrawBar(posx, posy+CELLH-ACTIVE_SIZE, CELLW, ACTIVE_SIZE, status_color);
 		if (ATTACHEMENT_LEFT  ==attachement) DrawBar(posx, posy, ACTIVE_SIZE, CELLH, status_color);
@@ -205,20 +188,20 @@ void DrawProcessList()
 void SetAttachement()
 {
 	if (attachement==ATTACHEMENT_LEFT) {
-		DefineUnDragableWindow(0, 0, CELLW-1, screen.height);
-		SetClientScreenArea(CELLW, screen.width-CELLW, 0, screen.height);
+		DefineUnDragableWindow(0, 0, CELLW-1, screen.h);
+		SetClientScreenArea(CELLW, screen.w-CELLW, 0, screen.h);
 	}
 	if (attachement==ATTACHEMENT_RIGHT) {
-		DefineUnDragableWindow(screen.width - CELLW, 0, CELLW, screen.height);
-		SetClientScreenArea(0, screen.width-CELLW, 0, screen.height);
+		DefineUnDragableWindow(screen.w - CELLW, 0, CELLW, screen.h);
+		SetClientScreenArea(0, screen.w-CELLW, 0, screen.h);
 	}
 	if (attachement==ATTACHEMENT_TOP) {
-		DefineUnDragableWindow(0, 0, screen.width, CELLH-1);
-		SetClientScreenArea(0, 0, CELLH, screen.height);
+		DefineUnDragableWindow(0, 0, screen.w, CELLH-1);
+		SetClientScreenArea(0, 0, CELLH, screen.h);
 	}
 	if (attachement==ATTACHEMENT_BOTTOM) {
-		DefineUnDragableWindow(0, screen.height, screen.width, CELLH);
-		SetClientScreenArea(0, 0, 0, screen.height - CELLH);
+		DefineUnDragableWindow(0, screen.h, screen.w, CELLH);
+		SetClientScreenArea(0, 0, 0, screen.h - CELLH);
 	}
 }
 
@@ -231,7 +214,7 @@ byte draw_icons_from_section(dword key_value, key_name, sec_name, f_name)
 void GetAttachedItems()
 {
 	attached.drop();
-	ini_enum_keys stdcall ("/sys/appicons.ini", "attached", #draw_icons_from_section);
+	ini_enum_keys stdcall ("/sys/settings/appicons.ini", "attached", #draw_icons_from_section);
 }
 //===================================================//
 //                                                   //

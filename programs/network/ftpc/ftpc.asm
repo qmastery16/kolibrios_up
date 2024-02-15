@@ -1,6 +1,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                                 ;;
-;; Copyright (C) KolibriOS team 2013-2018. All rights reserved.    ;;
+;; Copyright (C) KolibriOS team 2013-2021. All rights reserved.    ;;
 ;; Distributed under terms of the GNU General Public License       ;;
 ;;                                                                 ;;
 ;;  ftpc.asm - FTP client for KolibriOS                            ;;
@@ -353,26 +353,36 @@ wait_for_servercommand: ;///////////////////////////////////////////////////////
         add     ecx, esi
         jmp     .byteloop
 
-; receive socket data
+; receive socket data with timeout
   .receive:
         mcall   26, 9
         add     eax, TIMEOUT*100
         mov     [timeout], eax
-  .receive_loop:
-        mcall   23, 50          ; Wait for event with timeout
-        mcall   26, 9
-        cmp     eax, [timeout]
-        jl      @f
-        mov     eax, str_err_timeout
-        jmp     error
-    @@: mcall   recv, [controlsocket], buf_buffer1, BUFFERSIZE, MSG_DONTWAIT
-        test    eax, eax
-        jnz     .got_data
+  .again:
+        mcall   recv, [controlsocket], buf_buffer1, BUFFERSIZE, MSG_DONTWAIT
+        cmp     eax, 0
+        jg      .got_data
+        je      .closed
         cmp     ebx, EWOULDBLOCK
-        je      @f
+        jne     .sock_err
+        mcall   26, 9
+        mov     ebx, [timeout]
+        sub     ebx, eax
+        jle     .timeout
+        mcall   23      ; Wait for event with timeout
+        jmp     .again
+
+  .sock_err:
         mov     eax, str_err_recv
         jmp     error
-    @@: jmp     .receive_loop
+
+  .closed:
+        mov     eax, str_err_closed
+        jmp     error
+
+  .timeout:
+        mov     eax, str_err_timeout
+        jmp     error
 
   .got_data:
         mov     [offset], 0
@@ -750,7 +760,7 @@ exit2:
 
 ; data
 str_title       db 'FTP client for KolibriOS',0
-str_welcome     db 'FTP client for KolibriOS v0.15b',10
+str_welcome     db 'FTP client for KolibriOS v0.16',10
                 db 10,0
 str_srv_addr    db 'Please enter ftp server address.',10,0
 
@@ -758,6 +768,7 @@ str_prompt      db '> ',0
 str_resolve     db 'Resolving ',0
 str_newline     db 10,0
 str_err_resolve db 10,'Name resolution failed.',10,0
+str_err_closed  db 10,'The connection was closed by the remote end',10,0
 str_err_socket  db 10,'[75,0 socket]: Error creating a socket',10,0
 str_err_bind    db 10,'[75,2 bind]: Error binding to socket',10,0
 str_err_listen  db 10,'[75,3 listen]: Cannot accept incoming connections',10,0
@@ -876,10 +887,30 @@ import  libini, \
         ini.get_str,    'ini_get_str', \
         ini.get_int,    'ini_get_int'
 
+param_user:     db 'anonymous',0
+rb 60
 
+param_server_addr db 'kolibrios.org'
+rb 1024
+
+align 4
 i_end:
-
 ; uninitialised data
+
+run_file_70 FileInfoBlock ; required for libimg
+
+new_dir_buf rb 64
+folder_data rb 32+32*304
+
+remote_list_buf rb 1024
+file_name   rb 4096 ; required for libimg
+conv_tabl   rb 128
+ed_buffer   rb 100
+tedit_buffer rb 1024
+el_focus    dd ?
+;-----------------------
+
+procinfo        process_information
 
 interface_addr  rd 1
 
@@ -915,10 +946,10 @@ filestruct:
 filestruct2:
   .subfn        dd ?
   .offset       dd ?
-                dd 0
+                dd ?
   .size         dd ?
   .ptr          dd ?
-                db 0
+                db ?
   .name         dd ?
 
 folder_buf      rb 40
@@ -933,9 +964,9 @@ logfile_offset  rd 1
 path            rb 1024
 
 initial_login   rb 1
-param_user      rb 1024
+
 param_password  rb 1024
-param_server_addr rb 1024
+
 param_path      rb 1024
 param_port      rb 6
 

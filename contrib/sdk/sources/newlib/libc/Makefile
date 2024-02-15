@@ -2,7 +2,7 @@ CC = kos32-gcc
 AR = kos32-ar
 LD = kos32-ld
 
-INSTALLDIR:= /home/autobuild/tools/win32/lib
+INSTALLDIR:= /home/autobuild/tools/win32/mingw32
 
 CFLAGS = -c -O2 -fno-builtin -fno-ident -fomit-frame-pointer -DMISSING_SYSCALL_NAMES
 LDFLAGS = -shared -s -T libcdll.lds --out-implib libc.dll.a --image-base 0 
@@ -116,10 +116,9 @@ CORE_SRCS:=                   			\
 			sys/clock_gettime.c	\
 			sys/close.c		\
 			sys/conio.c		\
-			sys/create.c         	\
+			sys/chdir.c 	\
+			sys/getcwd.c	\
 			sys/errno.c		\
-			sys/finfo.c          	\
-			sys/fsize.c          	\
 			sys/fstat.c		\
 			sys/gettod.c		\
 			sys/io.c		\
@@ -134,6 +133,7 @@ CORE_SRCS:=                   			\
 			sys/unlink.c		\
 			sys/write.c          	\
 			sys/io_alloc.S		\
+			sys/ftruncate.c		\
 			time/asctime.c       	\
 			time/asctime_r.c     	\
 			time/clock.c         	\
@@ -182,6 +182,7 @@ STDLIB_SRCS=                 			\
     		gdtoa-gethex.c      	\
     		gdtoa-hexnan.c       	\
     		getenv.c             	\
+    		envlock.c             	\
 			getenv_r.c		\
 			itoa.c			\
 			ldiv.c			\
@@ -325,7 +326,8 @@ STRING_SRCS= \
 			wmemcmp.c		\
 			wmemcpy.c		\
 			wmemmove.c		\
-			wmemset.c
+			wmemset.c		\
+			dirname.c		
 
 
 STDIO_SRCS=					\
@@ -472,7 +474,6 @@ STDIO_SRCS=					\
 			wscanf.c		\
 			wsetup.c
 
-
 MATH_SRCS = 	e_acos.c e_acosh.c e_asin.c e_atan2.c e_atanh.c e_cosh.c e_exp.c e_fmod.c	\
 		e_hypot.c e_j0.c e_j1.c e_jn.c e_log.c e_log10.c e_pow.c e_rem_pio2.c 		\
 		e_remainder.c e_scalb.c e_sinh.c e_sqrt.c ef_acos.c ef_acosh.c ef_asin.c	\
@@ -509,6 +510,13 @@ MATH_SRCS = 	e_acos.c e_acosh.c e_asin.c e_atan2.c e_atanh.c e_cosh.c e_exp.c e_
 		f_log10.S f_log10f.S f_logf.S f_tan.S f_tanf.S
 
 
+POSIX_SRCS =	opendir.c \
+		closedir.c \
+		readdir.c \
+		seekdir.c \
+		telldir.c \
+		rewinddir.c
+
 STATIC_OBJS =  $(patsubst %.S, %.o, $(patsubst %.c, %.o, $(STATIC_SRCS)))
 
 LIBCRT_OBJS =  $(patsubst %.S, %.o, $(patsubst %.c, %.o, $(LIBCRT_SRCS)))
@@ -529,10 +537,10 @@ STRING_OBJS =  $(patsubst %.S, string/%.o, $(patsubst %.asm, string/%.o,\
 STDLIB_OBJS =  $(patsubst %.S, stdlib/%.o, $(patsubst %.asm, stdlib/%.o,\
                $(patsubst %.c, stdlib/%.o, $(STDLIB_SRCS))))
 
-
 MATH_OBJS =  $(patsubst %.S, math/%.o, $(patsubst %.asm, math/%.o,\
                $(patsubst %.c, math/%.o, $(MATH_SRCS))))
 
+POSIX_OBJS =  $(patsubst %.c, posix/%.o, $(POSIX_SRCS))
 
 PRINTF_OBJS= 	stdio/vfprintf.o	\
 		stdio/vfiprintf.o	\
@@ -565,7 +573,8 @@ LIB_SRCS+=				\
 		$(CORE_SRCS)		\
 		$(STDIO_SRCS) 		\
 		$(STRING_SRCS)		\
-		$(STDLIB_SRCS)
+		$(STDLIB_SRCS)		\
+		$(POSIX_SRCS)
 
 LIB_OBJS+=				\
 		$(CORE_OBJS) 		\
@@ -573,7 +582,8 @@ LIB_OBJS+=				\
 		$(STDLIB_OBJS)		\
 		$(STDIO_OBJS) 		\
 		$(PRINTF_OBJS)		\
-		$(MATH_OBJS)
+		$(MATH_OBJS)		\
+		$(POSIX_OBJS)
 
 LIB_OBJS+= time/wcsftime.o
 
@@ -588,8 +598,8 @@ $(NAME).dll: $(LIB_OBJS) $(SRC_DEP) Makefile
 
 install: libc.dll libc.dll.a libdll.a
 	mv -f libc.dll $(SDK_DIR)/bin
-	mv -f libc.dll.a $(INSTALLDIR)
-	mv -f libdll.a $(INSTALLDIR)
+	mv -f libc.dll.a $(INSTALLDIR)/lib
+	mv -f libdll.a $(INSTALLDIR)/lib
 
 libdll.a: $(LIBDLL_OBJS) Makefile
 	$(AR) $(ARFLAGS) libdll.a $(LIBDLL_OBJS)
@@ -662,7 +672,7 @@ time/wcsftime.o: time/strftime.c
 
 
 %.obj : %.asm Makefile
-	fasm $< $
+	fasm $<
 
 %.o : %.c Makefile
 	$(CC) $(CFLAGS) $(DEFINES) $(INCLUDES) -o $@ $<

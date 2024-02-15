@@ -1,6 +1,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                              ;;
-;; Copyright (C) KolibriOS team 2004-2015. All rights reserved. ;;
+;; Copyright (C) KolibriOS team 2004-2022. All rights reserved. ;;
 ;; Distributed under terms of the GNU General Public License    ;;
 ;;                                                              ;;
 ;;  VGA.INC                                                     ;;
@@ -11,7 +11,7 @@
 ;;                                                              ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-$Revision: 5363 $
+$Revision: 9941 $
 
 ;------------------------------------------------------------------------------
 align 4
@@ -168,7 +168,7 @@ align 4
 align 4
 novesal:
         mov     [novesachecksum], ecx
-        mov     ecx, 0
+        xor     ecx, ecx     ;mov     ecx, 0
         movzx   eax, word [MOUSE_Y]
         cmp     eax, 100
         jge     m13l3
@@ -250,7 +250,7 @@ align 4
 @@:
         push    ebx edx esi edi
         shl     edx, 9
-        lea     edx, [edx+edx*4]
+        lea     edx, [edx + edx*4]
         add     esi, edx
         shr     edx, 5
         add     edi, edx
@@ -378,22 +378,20 @@ VGA_putpixel:
  ; eax = x
  ; ebx = y
         mov     ecx, eax
-        mov     eax, [esp+32-8+4] ; color
+        mov     eax, [esp + 32-8+4] ; color
 ;--------------------------------------
 ; check for hardware cursor
         cmp     [_display.select_cursor], select_cursor
-        je      @f
-        cmp     [_display.select_cursor], 0
         jne     .no_mouseunder
 ;--------------------------------------
 align 4
-@@:
         push    ecx
         shl     ecx, 16
         mov     cx, bx
 ; check mouse area for putpixel
         test    eax, 0x04000000
         jnz     @f
+
         call    [_display.check_mouse]
 ;--------------------------------------
 align 4
@@ -403,14 +401,14 @@ align 4
 align 4
 .no_mouseunder:
         shl     ebx, 9
-        lea     ebx, [ebx+ebx*4]   ; умножение на 5
-        lea     edx, [ebx+ecx*4]  ; + x*BytesPerPixel (Vesa2.0 32)
+        lea     ebx, [ebx + ebx*4]  ; multiply by 5
+        lea     edx, [ebx + ecx*4]  ; + x*BytesPerPixel (Vesa2.0 32)
         mov     edi, edx
-        add     edi, [LFBAddress]     ; + LFB address
+        add     edi, [LFBAddress] ; + LFB address
         mov     [edi], eax        ; write to LFB for Vesa2.0
         shr     edx, 5            ; change BytesPerPixel to 1/8
         mov     edi, edx
-        add     edi, VGABasePtr     ; address of pixel in VGA area
+        add     edi, VGABasePtr   ; address of pixel in VGA area
         and     ecx, 0x07         ; bit no. (modulo 8)
         pushfd
         ; edi = address, eax = 24bit colour, ecx = bit no. (modulo 8)
@@ -495,16 +493,17 @@ VGA_draw_bar:
 align 4
 VGA_draw_bar_1:
         mov     [temp.cx], eax
-        mov     eax, [TASK_BASE]
-        add     ebx, [eax-twdw + 4]
-        mov     eax, [eax-twdw + 0]
+        mov     eax, [current_slot]
+        mov     eax, [eax + APPDATA.window]
+        add     ebx, [eax + WDATA.box.top]
+        mov     eax, [eax + WDATA.box.left]
         add     eax, [temp.cx]
         and     eax, 0xfff8
         shl     ebx, 9
-        lea     ebx, [ebx+ebx*4]; умножение на 5
-        lea     ebx, [ebx+eax*4]  ; + x*BytesPerPixel (Vesa2.0 32)
+        lea     ebx, [ebx + ebx*4]  ; multiply by 5
+        lea     ebx, [ebx + eax*4]  ; + x*BytesPerPixel (Vesa2.0 32)
         mov     esi, ebx
-        add     esi, [LFBAddress]     ; + LFB address
+        add     esi, [LFBAddress] ; + LFB address
         shr     ebx, 5            ; change BytesPerPixel to 1/8
         mov     edi, ebx
         add     edi, VGABasePtr   ; address of pixel in VGA area
@@ -524,7 +523,7 @@ align 4
 VGA_draw_long_line_1:
         push    ebx edx esi edi
         shl     edx, 9
-        lea     edx, [edx+edx*4]
+        lea     edx, [edx + edx*4]
         add     esi, edx
         shr     edx, 5
         add     edi, edx

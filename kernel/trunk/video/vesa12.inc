@@ -1,6 +1,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                              ;;
-;; Copyright (C) KolibriOS team 2004-2015. All rights reserved. ;;
+;; Copyright (C) KolibriOS team 2004-2022. All rights reserved. ;;
 ;; Distributed under terms of the GNU General Public License    ;;
 ;;                                                              ;;
 ;;  VESA12.INC                                                  ;;
@@ -15,7 +15,7 @@
 ;;                                                              ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-$Revision: 7136 $
+$Revision: 9949 $
 
 
 TRIDENT       = 0
@@ -256,8 +256,8 @@ vesa12_drawbackground:
         mov     ebx, 3
         mul     ebx
         mov     [imax], eax
-        mov     eax, [draw_data+32+RECT.left]
-        mov     ebx, [draw_data+32+RECT.top]
+        mov     eax, [background_window + WDATA.draw_data.left]
+        mov     ebx, [background_window + WDATA.draw_data.top]
         xor     edi, edi;no force
 
       v12dp3:
@@ -398,9 +398,10 @@ vesa12_drawbar:
         push    ebx
         push    ecx
         push    edx
-        mov     ecx, [TASK_BASE]
-        add     eax, [ecx-twdw+WDATA.box.left]
-        add     ebx, [ecx-twdw+WDATA.box.top]
+        mov     ecx, [current_slot_idx]
+        shl     ecx, 5
+        add     eax, [ecx + window_data + WDATA.box.left]
+        add     ebx, [ecx + window_data + WDATA.box.top]
         push    eax
         mov     eax, ebx ; y
         mov     ebx, [BytesPerScanLine]
@@ -765,9 +766,10 @@ vesa12_putimage:
         push    edx
         movzx   eax, word [esp+2]
         movzx   ebx, word [esp+0]
-        mov     ecx, [TASK_BASE]
-        add     eax, [ecx-twdw+WDATA.box.left]
-        add     ebx, [ecx-twdw+WDATA.box.top]
+        mov     ecx, [current_slot_idx]
+        shl     ecx, 5
+        add     eax, [ecx + window_data + WDATA.box.left]
+        add     ebx, [ecx + window_data + WDATA.box.top]
         push    eax
         mov     eax, ebx  ; y
         mul     dword [BytesPerScanLine]

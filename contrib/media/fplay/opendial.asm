@@ -83,12 +83,15 @@ _get_moviefile:
 
         push    od
         call    [opendialog_start]
+        cmp     [od.status], 1
+        jne     .fail
 
         popad
         mov     eax, [od.openfile_path]; selected filePath
 
         ret
 .fail:
+        popad
         xor     eax, eax
         ret
 
@@ -98,12 +101,12 @@ fake_on_redraw:
 
 section '.rdata' align 16
 
-sz_proc_lib         db "/rd/1/lib/proc_lib.obj",0
+sz_proc_lib         db "/sys/lib/proc_lib.obj",0
 sz_OpenDialog_init  db "OpenDialog_init",0
 sz_OpenDialog_start db "OpenDialog_start",0
 sz_com_area_name    db "FFFFFFFF_open_dialog",0
-sz_dir_default_path db "/rd/1",0
-sz_start_path       db "/rd/1/File managers/opendial",0
+sz_dir_default_path db "/sys",0
+sz_start_path       db "/sys/File managers/opendial",0
 
 
 section '.data' align 16

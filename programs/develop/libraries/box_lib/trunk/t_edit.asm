@@ -1,6 +1,6 @@
 ; макрос для системной библиотеки box_lib.obj
 ; элемент TextEditor для Kolibri OS
-; файл последний раз изменялся 29.01.2019 IgorA
+; файл последний раз изменялся 12.01.2021 IgorA
 ; на код применена GPL2 лицензия
 
 ;input:
@@ -337,8 +337,7 @@ proc ted_key, edit:dword, table:dword, control:dword
 			stdcall ted_draw,edi
 			jmp @f
 		.no_red_0:
-		call ted_draw_main_cursor
-		mov ted_drag_k,0 ;заканчиваем выделение от клавиатуры
+		call ted_sel_end
 	@@:
 	cmp ah,80 ;177 ;Down
 	jne @f
@@ -350,8 +349,7 @@ proc ted_key, edit:dword, table:dword, control:dword
 			stdcall ted_draw,edi
 			jmp @f
 		.no_red_1:
-		call ted_draw_main_cursor
-		mov ted_drag_k,0 ;заканчиваем выделение от клавиатуры
+		call ted_sel_end
 	@@:
 	cmp ah,75 ;176 ;Left
 	jne @f
@@ -363,8 +361,7 @@ proc ted_key, edit:dword, table:dword, control:dword
 			stdcall ted_draw,edi
 			jmp @f
 		.no_red_2:
-		call ted_draw_main_cursor
-		mov ted_drag_k,0 ;заканчиваем выделение от клавиатуры
+		call ted_sel_end
 	@@:
 	cmp ah,77 ;179 ;Right
 	jne @f
@@ -376,8 +373,7 @@ proc ted_key, edit:dword, table:dword, control:dword
 			stdcall ted_draw,edi
 			jmp @f
 		.no_red_3:
-		call ted_draw_main_cursor
-		mov ted_drag_k,0 ;заканчиваем выделение от клавиатуры
+		call ted_sel_end
 	@@:
 	cmp ah,71 ;180 ;Home
 	jne @f
@@ -389,8 +385,7 @@ proc ted_key, edit:dword, table:dword, control:dword
 			stdcall ted_draw,edi
 			jmp @f
 		.no_red_4:
-		call ted_draw_main_cursor
-		mov ted_drag_k,0 ;заканчиваем выделение от клавиатуры
+		call ted_sel_end
 	@@:
 	cmp ah,79 ;181 ;End
 	jne @f
@@ -402,8 +397,7 @@ proc ted_key, edit:dword, table:dword, control:dword
 			stdcall ted_draw,edi
 			jmp @f
 		.no_red_5:
-		call ted_draw_main_cursor
-		mov ted_drag_k,0 ;заканчиваем выделение от клавиатуры
+		call ted_sel_end
 	@@:
 	cmp ah,73 ;184 ;PageUp
 	jne @f
@@ -412,6 +406,7 @@ proc ted_key, edit:dword, table:dword, control:dword
 		je @f
 		call ted_scroll_set_redraw
 		stdcall ted_draw,edi
+		mov ted_drag_k,0 ;заканчиваем выделение от клавиатуры
 	@@:
 	cmp ah,81 ;183 ;PageDown
 	jne @f
@@ -635,6 +630,29 @@ endp
 ;input:
 ; edi = pointer to tedit struct
 ;description:
+; Функция вызываемая при снятии выделения
+align 16
+proc ted_sel_end uses eax
+	mov ted_drag_k,0 ;заканчиваем выделение от клавиатуры
+	call ted_is_select
+	or al,al
+	jz @f
+		xor eax,eax
+		mov ted_sel_x0,eax
+		mov ted_sel_x1,eax
+		mov ted_sel_y0,eax
+		mov ted_sel_y1,eax
+		stdcall ted_draw,edi
+		jmp .end_f
+	@@:
+	call ted_draw_main_cursor
+	.end_f:
+	ret
+endp
+
+;input:
+; edi = pointer to tedit struct
+;description:
 ; Функция вызываемая при перемещении выделения
 align 16
 proc ted_sel_move
@@ -744,13 +762,12 @@ proc ted_init_syntax_file, edit:dword
 
 	;init: ted_colors_text_count, ted_key_words_count, ...
 	mov ted_colors_text_count,1
-	mov ted_key_words_count,0
 	mov ted_help_text_f1,0
 	mov ted_help_id,-1 ;идентификатор слова для справки
 
 	mov eax,edi ;сохраняем значение edi
 	mov esi,ted_syntax_file
-	add edi,ted_offs_count_colors
+	add edi,ted_offs_count_colors ;edi = &ted_key_words_count
 	mov ecx,9
 	rep movsd
 	mov edi,eax ;востанавливаем значение edi
@@ -765,6 +782,8 @@ proc ted_init_syntax_file, edit:dword
 	mov ted_key_words_data,eax
 
 	mov ecx,ted_key_words_count ;init: ted_arr_key_pos (first key positions)
+	or ecx,ecx
+	jz .no_words
 	xor eax,eax
 	@@:
 		ColToIndexOffset eax,edx
@@ -777,6 +796,7 @@ proc ted_init_syntax_file, edit:dword
 		.no_ch_key:
 		inc eax
 	loop @b
+	.no_words:
 
 	;init: ted_help_text_f1
 	mov ecx,ted_key_words_count ;количество ключевых слов
@@ -802,19 +822,26 @@ proc ted_on_open_file
 	push edx ;source
 	push esi
 
+	or ebx,ebx
+	jnz @f
+		;если файл пустой
+		stdcall ted_clear,edi,1 ;чистим всю память
+		jmp .end_opn
+align 4
+	@@:
 	stdcall ted_clear,edi,0 ;чистим не всю память, потому что ниже будем ее заполнять новыми даными
 
-	;когда символ завершения строки только 10 (без 13)
-	mov edx,ted_tex
-	mov ecx,ebx
-	@@:
-		cmp byte[edx],13
-		je .no_10 ;если найден символ 13, то 10-е игнорируем
-		inc edx
-		loop @b
 	mov edx,ted_tex
 	mov ecx,ebx
 	.s_10:
+		cmp word[edx],0xa0d ;пропускаем 10-й символ если перед ним стоит 13-й
+		jne @f
+			dec ecx
+			jz .no_10
+			dec ecx
+			jz .no_10
+			add edx,2
+		@@:
 		cmp byte[edx],10
 		jne @f
 			mov byte[edx],13 ;меняем 10-й символ конца строки
@@ -824,9 +851,8 @@ proc ted_on_open_file
 	.no_10:
 
 	;переводим открытый файл внутрь элемента t_edit
-	mov eax,ebx
 	mov ecx,ebx
-	add eax,2
+	lea eax,[ebx+2]
 	ConvertIndexToPointer eax
 	mov edx,ted_tex
 	add edx,ebx
@@ -842,12 +868,13 @@ proc ted_on_open_file
 		mov dword[eax+symbol.tc],-1
 		mov dword[eax+symbol.td],0
 
-		cmp ecx,0
-		je @f
+		or ecx,ecx
+		jz @f
 		dec ecx
 		dec edx
 		sub eax,sizeof.symbol
 		jmp @b
+align 4
 	@@:
 	pop ebx
 	mov dword[eax+symbol.perv],0 ; first sumbol 'perv=0'
@@ -872,11 +899,12 @@ proc ted_on_open_file
 	@@: ;clear memory, need if before was open big file
 		add edx,sizeof.symbol
 		cmp edx,ted_tex_end
-		jge @f
+		jge .end_opn
 			mov dword[edx+symbol.tc],0
 			mov dword[edx+symbol.td],0
 		jmp @b
-	@@:
+align 4
+	.end_opn:
 
 	call ted_get_num_lines
 	cmp eax,TED_LINES_IN_NEW_FILE
@@ -1207,16 +1235,16 @@ proc ted_text_add, edit:dword, text:dword, t_len:dword, add_opt:dword
 		add edx,sizeof.symbol
 		cmp edx,ted_tex_end
 		jge @f ;out of memory
-		cmp ebx,0
-		jne .beg_cycle
+		or ebx,ebx
+		jnz .beg_cycle
 		mov ted_ptr_free_symb,edx ;меняем указатель на свободный символ, для более быстрого поиска памяти
 		jmp .add_all
 	@@:
 	cmp ted_increase_size,0
 	je .add_all
 		call ted_memory_increase
-		cmp ebx,0
-		jne .beg_cycle
+		or ebx,ebx
+		jnz .beg_cycle
 	.add_all: ;все символы добавлены
 
 	call ted_text_colored
@@ -1235,20 +1263,12 @@ proc ted_memory_increase
 	cmp ted_increase_size,0
 	je @f
 		push eax ebx ecx
-		mov ecx,ted_increase_size
-		add ecx,ted_max_chars
-		mov ted_max_chars,ecx
-		imul ecx,sizeof.symbol
-		invoke mem.realloc, ted_tex,ecx
 		mov ebx,ted_tex
-		mov ted_tex,eax
-		mov ted_tex_1,eax
-		add ted_tex_1,sizeof.symbol
-			sub edx,ebx
-			add edx,eax
-			mov ted_ptr_free_symb,edx
-		add eax,ecx
-		mov ted_tex_end,eax
+		mov ecx,ted_max_chars
+		call ted_mem_resize.no_2
+		sub edx,ebx
+		add edx,ted_tex
+		mov ted_ptr_free_symb,edx
 		pop ecx ebx eax
 	@@:
 	ret
@@ -1396,7 +1416,7 @@ proc ted_convert_sel_text, conv_fun:dword
 		@@:
 	.end_f:
 	popad
-	mov esi,dword[conv_cou]
+	mov esi,[conv_cou]
 	ret
 endp
 
@@ -1931,27 +1951,27 @@ ted_strlen:
 ; ebx = symbol position in line
 align 16
 ted_get_text_coords:
-  push edx
-  xor eax,eax
-  xor ebx,ebx
-  @@:
-    call ted_iterat_perv
+	push edx
+	xor eax,eax
+	xor ebx,ebx
+	@@:
+		call ted_iterat_perv
 
-    cmp eax,0
-    jne .no_col_mov
-    inc ebx
-    .no_col_mov:
+		or eax,eax
+		jnz .no_col_mov
+			inc ebx
+		.no_col_mov:
 
-    cmp edx,ted_tex_1
-    jle @f
-    cmp byte [edx],13
-    jne @b
-    inc eax
-    jmp @b
-  @@:
-  dec ebx
-  pop edx
-  ret
+		cmp edx,ted_tex_1
+		jle @f
+		cmp byte [edx],13
+		jne @b
+		inc eax
+		jmp @b
+	@@:
+	dec ebx
+	pop edx
+	ret
 
 ;input:
 ; edi = pointer to tedit struct
@@ -2140,30 +2160,45 @@ ted_go_to_pos:
 ; edi = pointer to tedit struct
 align 16
 ted_text_colored:
-  push eax edx
-  mov eax,ted_tim_ch
-  sub eax,ted_tim_undo
-  mov ted_tim_co,eax
-  mov edx,ted_tex
-  @@:
-    call ted_iterat_next
-    cmp edx,ted_tex_1
-    jle @f
-    mov byte[edx+1],0
-    jmp @b
-  @@:
+	push eax edx
+	mov eax,ted_tim_ch
+	sub eax,ted_tim_undo
+	mov ted_tim_co,eax
+	mov edx,ted_tex
+	@@:
+		call ted_iterat_next
+		cmp edx,ted_tex_1
+		jle @f
+		mov byte[edx+1],0
+		jmp @b
+	@@:
 
-  cmp ted_key_words_count,1
-  jl .no_colors
-  mov edx,ted_tex
-  @@:
-    call ted_text_find_sel_color
-    cmp edx,ted_tex_1
-    jle .no_colors
-    jmp @b
-  .no_colors:
-  pop edx eax
-  ret
+	cmp ted_key_words_count,1
+	jl .no_colors
+	mov edx,ted_tex
+	@@:
+		call ted_text_find_sel_color
+		cmp edx,ted_tex_1
+		jg @b
+
+	xor ax,ax
+	mov edx,ted_tex
+	.cycle0:
+		call ted_iterat_next
+		cmp edx,ted_tex_1
+		jle .no_colors
+		mov al,byte[edx+1]
+		or al,al
+		jz .cycle0
+		cmp ah,al
+		jne @f
+			mov byte[edx+1],0 ;слияние рядом стоящих слов одного цвета
+		@@:
+		shl ax,8
+		jmp .cycle0
+	.no_colors:
+	pop edx eax
+	ret
 
 
 ;input:
@@ -2178,7 +2213,7 @@ proc ted_text_find_sel_color uses eax ebx ecx esi
 locals
 	begPos dd ? ;начальная позиция
 	endPos dd ? ;конечная позиция
-	find db ? ;найдено / не найдено
+	find db ? ;0 - не найдено, 1 - найдено, 2 - найдено в конце файла
 	f_color db ? ;индекс цвета найденого слова
 endl
 ;eax = word_n текущий номер (позиция) проверяемого слова в списке
@@ -2189,18 +2224,17 @@ endl
 	mov dword[endPos],1
 	mov byte[find],0
 	mov byte[f_color],1
-	@@:
+	.cycle0:
 		call ted_iterat_next
 		cmp edx,ted_tex_1
-		jle @f
+		jle .cycle0end
 
-		xor eax,eax
-		mov al,byte[edx]
-		shl ax,2 ;eax*=4
+		movzx eax,byte[edx]
+		shl eax,2 ;eax*=4
 		add eax,ted_arr_key_pos
 		mov eax,[eax]
 		cmp eax,0
-		jl @b ;if( (word_n=ted_arr_key_pos[(unsigned char)tex[i].c])>-1 ){
+		jl .cycle0 ;if( (word_n=ted_arr_key_pos[(unsigned char)tex[i].c])>-1 ){
 
 		mov ecx,eax
 		;while(l_pos<ted_key_words_count && Col[l_pos].Text[0]==Col[word_n].Text[0])
@@ -2223,19 +2257,19 @@ align 4
 		call ted_iterat_next
 
 		;while(l_pos>word_n && Col[l_pos-1].Text[pos]!=tex[i].c)
-		.wh_3b:
+		@@:
 			cmp ecx,eax
-			jle .wh_3e
+			jle @f
 			dec ecx
 			ColToIndexOffset ecx,ebx
 			inc ecx
 			;cmp byte[ebx+esi],byte[edx]
 			mov bl,byte[ebx+esi]
 			cmp bl,byte[edx]
-			je .wh_3e
+			je @f
 				dec ecx
-			jmp .wh_3b
-		.wh_3e:
+			jmp @b
+		@@:
 
 		ColToIndexOffset eax,ebx
 		cmp byte[ebx+esi],0
@@ -2255,13 +2289,13 @@ align 4
 			call ted_iterat_perv
 
 			btr bx,0 ;1-1
-			jae .if_3e ;if(Col[word_n].wwo&1)
+			jae @f ;if(Col[word_n].wwo&1)
 				;u1= !(isalnum(cont_s)||cont_s=='_')
 				call isalnum
-				jae .if_3e
+				jae @f
 					mov byte[find],0
 					jmp .if_4e
-			.if_3e:
+			@@:
 
 			btr bx,3 ;4-1
 			jae .if_4e ;if(Col[word_n].wwo&8)
@@ -2275,13 +2309,13 @@ align 4
 			;call ted_iterat_next
 
 			btr bx,1 ;2-1
-			jae .if_5e ;if(Col[word_n].wwo&2)
+			jae @f ;if(Col[word_n].wwo&2)
 				;u1= !(isalnum(cont_s)||cont_s=='_')
 				call isalnum
-				jae .if_5e
+				jae @f
 					mov byte[find],0
 					jmp .if_6e
-			.if_5e:
+			@@:
 
 			btr bx,4 ;5-1
 			jae .if_6e ;if(Col[word_n].wwo&16)
@@ -2297,7 +2331,11 @@ align 4
 				mov bx,word[ebx+MAX_COLOR_WORD_LEN+5]
 				call ted_iterat_next_pos_char
 				cmp edx,ted_tex_1
-				jle .if_7e
+				jg @f
+					;если дошли до конца файла и не нашли символ конца разметки
+					call ted_iterat_perv
+					mov byte[find],2
+				@@:
 					mov dword[endPos],edx
 			.if_7e:
 
@@ -2335,21 +2373,23 @@ align 4
 			jmp .wh_2b
 		.wh_2e:
 
-		cmp byte[find],1 ;if(fnd)break;
-		je @f
+		cmp byte[find],0 ;if(fnd)break;
+		jne .cycle0end
 			mov edx,[begPos];i=bP;
-		jmp @b
-	@@:
+		jmp .cycle0
+	.cycle0end:
 
-	cmp byte[find],1
-	jne .if_1e ;if(fnd){ // выделение найденого текста
+	cmp byte[find],0
+	je .if_1e ;if(fnd){ // выделение найденого текста
 		;if(!mode_sf1 || (mode_sf1 && strlen(Col[word_n].f1->c_str())>0)){
 		mov eax,[begPos]
 		mov bl,[f_color]
 		mov [eax+1],bl ;tex[bP].col=f_color;
 		mov eax,[endPos]
 		mov byte[eax+1],0xff ;tex[eP].col=255;
-		;return ItPoPerv(eP); // возвращаем позицию конца вхождения
+		cmp byte[find],2
+		je .if_1e
+		;return ItPoPerv(eP); // возвращаем позицию конца вхождения		
 		mov edx,[endPos]
 		call ted_get_text_perv_pos
 		jmp @f
@@ -2425,15 +2465,13 @@ endp
 ; edi = pointer to tedit struct
 ; end_pos = position end 'symbol' struct
 align 16
-proc ted_find_help_id, end_pos:dword
+proc ted_find_help_id uses ebx ecx, end_pos:dword
 ; ecx = word_n
 ; ebx = l_pos
   mov ted_help_id,-1
 
-  push ebx ecx
-    xor ebx,ebx
-    mov bl,[edx]
-    shl bx,2 ;ebx*=4
+    movzx ebx,byte[edx]
+    shl ebx,2 ;ebx*=4
     add ebx,ted_arr_key_pos
     mov ecx,[ebx]
     cmp ecx,0
@@ -2497,15 +2535,42 @@ proc ted_find_help_id, end_pos:dword
       ;return word_n;
 
     .if_0e:
-  pop ecx ebx
   ret
 endp
+
+;description:
+; изменяем размер памяти для текста (установка ted_ptr_free_symb на 1 символ)
+;input:
+; ecx - число символов в файле
+; edi - pointer to tedit struct
+;output:
+; eax, ecx - разрушаются
+align 16
+ted_mem_resize:
+	add ecx,2 ;память для текста + служебные начальный и конечный символы
+.no_2:
+	add ecx,ted_increase_size ;память для редактирования файла
+	mov ted_max_chars,ecx
+	imul ecx,sizeof.symbol
+	invoke mem.realloc, ted_tex,ecx
+	mov ted_tex,eax
+	mov ted_tex_1,eax
+	add ted_tex_1,sizeof.symbol
+	add eax,ecx
+	mov ted_tex_end,eax
+	mov ecx,ted_tex_1
+	add ecx,sizeof.symbol
+	mov ted_ptr_free_symb,ecx
+	ret
 
 ;output:
 ; eax = код ошибки
 ; ebx = колличество прочитанных байт
 align 16
-proc ted_open_file uses ecx edx edi, edit:dword, file:dword, f_name:dword ;функция открытия файла
+proc ted_open_file uses ecx edx edi esi, edit:dword, file:dword, f_name:dword ;функция открытия файла
+	locals
+		unpac_mem dd ?
+	endl
 	mov edi,[edit]
 
 	; *** проверяем размер памяти и если не хватает то увеличиваем ***
@@ -2535,21 +2600,8 @@ align 4
 	mov edx,[edx+32] ;+32 = +0x20: qword: размер файла в байтах
 	cmp edx,ecx
 	jl @f
-		;увеличиваем память если не хватило
-		mov ecx,edx ;память необходимая для открытия файла
-		add ecx,2  ;память для служебных начального и конечного символов
-		add ecx,ted_increase_size ;память для редактирования файла
-		mov ted_max_chars,ecx
-		imul ecx,sizeof.symbol
-		invoke mem.realloc, ted_tex,ecx
-		mov ted_tex,eax
-		mov ted_tex_1,eax
-		add ted_tex_1,sizeof.symbol
-		add eax,ecx
-		mov ted_tex_end,eax
-		mov ecx,ted_tex_1
-		add ecx,sizeof.symbol
-		mov ted_ptr_free_symb,ecx
+		mov ecx,edx
+		call ted_mem_resize
 	@@:
 
 	; *** пробуем открыть файл ***
@@ -2567,12 +2619,37 @@ align 4
 	or eax,eax
 	jz @f
 	cmp eax,6
-	je @f
-		jmp .ret_f
+	jne .ret_f
 	@@:
 	cmp ebx,-1
 	je .ret_f
 		;if open file
+		push eax
+		mov eax,ted_tex
+		cmp dword[eax],'KPCK'
+		jne .end_unpack
+			;выделение памяти для распаковки файла
+			invoke mem.alloc,[eax+4]
+			mov [unpac_mem],eax
+			stdcall unpack,ted_tex,[unpac_mem]
+			mov ecx,ted_max_chars
+			sub ecx,2 ;ecx = максимальное число байт, для которых была выделена память
+			mov eax,ted_tex
+			mov ebx,[eax+4]
+			cmp ebx,ecx
+			jl @f ;если для распакованого файла не хватает выделенной памяти
+				mov ecx,ebx
+				call ted_mem_resize
+			@@:
+			mov edi,ted_tex
+			mov esi,[unpac_mem]
+			mov ecx,ebx
+			cld
+			rep movsb
+			mov edi,[edit]
+			invoke mem.free,[unpac_mem]
+		.end_unpack:
+		pop eax
 		call ted_on_open_file
 	.ret_f:
 	ret
@@ -3220,56 +3297,56 @@ endp
 ; edi = pointer to tedit struct
 align 16
 proc ted_sel_key_left
-  cmp ted_drag_k,1
-  je @f
-    call ted_sel_start
-  @@:
-  push dx
-    call ted_cur_move_left
-    call ted_sel_move
-    cmp ted_drag_k,1
-    je @f
-      mov ted_drag_k,1
-      mov dl,8
-    @@:
-    cmp dl,8
-    jne @f
-      call ted_scroll_set_redraw
-      stdcall ted_draw,edi
-      jmp .end_f
-    @@:
-      stdcall ted_draw_cur_line,edi
-    .end_f:
-  pop dx
-  ret
+	cmp ted_drag_k,1
+	je @f
+		call ted_sel_start
+	@@:
+	push dx
+		call ted_cur_move_left
+		call ted_sel_move
+		cmp ted_drag_k,1
+		je @f
+			mov ted_drag_k,1
+			mov dl,8
+		@@:
+		cmp dl,8
+		jne @f
+			call ted_scroll_set_redraw
+			stdcall ted_draw,edi
+			jmp .end_f
+		@@:
+		stdcall ted_draw_cur_line,edi
+		.end_f:
+	pop dx
+	ret
 endp
 
 ;input:
 ; edi = pointer to tedit struct
 align 16
 proc ted_sel_key_right
-  cmp ted_drag_k,1
-  je @f
-    call ted_sel_start
-  @@:
-  push dx
-    call ted_cur_move_right
-    call ted_sel_move
-    cmp ted_drag_k,1
-    je @f
-      mov ted_drag_k,1
-      mov dl,8
-    @@:
-    cmp dl,8
-    jne @f
-      call ted_scroll_set_redraw
-      stdcall ted_draw,edi
-      jmp .end_f
-    @@:
-      stdcall ted_draw_cur_line,edi
-    .end_f:
-  pop dx
-  ret
+	cmp ted_drag_k,1
+	je @f
+		call ted_sel_start
+	@@:
+	push dx
+		call ted_cur_move_right
+		call ted_sel_move
+		cmp ted_drag_k,1
+		je @f
+			mov ted_drag_k,1
+			mov dl,8
+		@@:
+		cmp dl,8
+		jne @f
+			call ted_scroll_set_redraw
+			stdcall ted_draw,edi
+			jmp .end_f
+		@@:
+		stdcall ted_draw_cur_line,edi
+		.end_f:
+	pop dx
+	ret
 endp
 
 ;input:
@@ -3363,17 +3440,15 @@ ted_get_symb_color:
 			cmp edx,ted_tex_1
 			jle .exit
 		.on_first:
-			xor eax,eax
-			mov al,byte[edx+1]
-			or al,al ;если al=0 то цвет не меняется
+			movzx eax,byte[edx+1]
+			or eax,eax ;если al=0 то цвет не меняется
 			jz @b
 
 		cmp eax,ted_colors_text_count
 		jge .exit
 
-		shl ax,2 ;умножаем индекс цвета на 4 байта
 		mov ecx,ted_text_colors ;прибавляем смещение 1-го цвета
-		add ecx,eax
+		lea ecx,[ecx+4*eax]
 		mov ecx,[ecx] ;устанавливаем текущий цвет текста по смещению
 	.exit:
 	or ecx,ted_font_size
@@ -3406,8 +3481,7 @@ align 4
 		cmp byte[edx],9
 		je @f
 		cmp byte[edx],13
-		je @f
-			jmp .end_f
+		jne .end_f
 		@@:
 			lea edx,[ted_symbol_space]
 	.end_f:
@@ -3451,8 +3525,8 @@ proc ted_draw, edit:dword
 
 	stdcall ted_clear_line_before_draw, edi,ebx,1,esi
 	call ted_get_first_visible_pos
-	cmp edx,0
-	je .no_draw_text
+	or edx,edx
+	jz .no_draw_text
 	mov esi,1 ;длинна выводимого текста по 1-му символу
 	@@:
 		call ted_iterat_next
@@ -3574,19 +3648,8 @@ pushad
 	imul edx,ted_rec_h
 	add ecx,edx
 
-	cmp ted_cur_ins,1 ;проверка режима работы курсора (обычный или вставка)
-	jne @f
-		mov edx,ted_rec_h
-		inc edx   ;1->1, 3->2, 5->3, ...
-		shr edx,1 ;edx = высота строки деленная на 2 (когда курсор не полный)
-		add ecx,edx
-	@@:
 	shl ecx,16
 	add ecx,ted_rec_h
-	cmp ted_cur_ins,1
-	jne @f
-		shr cx,1 ;делим высоту курсора на 2
-	@@:
 
 	mov ebx,ted_wnd_l ;calc rect -> x0,x1
 	add ebx,ted_rec_l
@@ -3595,6 +3658,10 @@ pushad
 	add ebx,edx
 	shl ebx,16
 	add ebx,ted_rec_w
+	cmp ted_cur_ins,1 ;проверка режима работы курсора (обычный или вставка)
+	jne @f
+		shr bx,2 ;уменьшаем ширину курсора
+	@@:
 
 	mov edx,ted_color_cursor
 	int 0x40 ;вывод курсора
@@ -3606,13 +3673,6 @@ pushad
 		ror ecx,16
 		mov bx,cx
 		add ebx,0x10001
-		cmp ted_cur_ins,1
-		jne .no_up_tetx
-			mov ecx,ted_rec_h
-			inc cx ; 1->1, 3->2, 5->3, ...
-			shr cx,1
-			sub bx,cx
-		.no_up_tetx:
 		mov ecx,ted_color_cur_text
 		or ecx,ted_font_size
 		call ted_convert_invis_symb
@@ -3766,9 +3826,8 @@ proc ted_draw_help_f1
 		add ebx,13 ;=3+10
 
 		;SetTextColor
-		xor eax,eax
-		mov al,byte[edx+MAX_COLOR_WORD_LEN+7]
-		shl ax,2
+		movzx eax,byte[edx+MAX_COLOR_WORD_LEN+7]
+		shl eax,2
 		mov ecx,ted_text_colors
 		add ecx,eax
 		mov ecx,[ecx]
@@ -4123,15 +4182,14 @@ proc ted_opt_draw_line_left uses ebx
 		or ebx,ebx
 		jz @f
 ;--------------------------------------
-xor eax,eax ;eax будет меняться
-mov al,byte[edx+1]
-or al,al
+;eax будет меняться
+movzx eax,byte[edx+1]
+or eax,eax
 jz .no_color
 cmp eax,ted_colors_text_count
 jge .no_color
-	xor ecx,ecx
-	mov cl,byte[edx+1]
-	shl cx,2
+	movzx ecx,byte[edx+1]
+	shl ecx,2
 	add ecx,ted_text_colors
 	mov ecx,[ecx]
 .no_color:
@@ -4331,20 +4389,30 @@ ted_wnd_main_mouse_scroll:
 	or ax,ax
 	jz .no_scroll
 		mov ecx,ted_scr_w
-		mov ebx,[ecx+sb_offs_position] ;copy old scroll position
-		and eax,0xffff
-		btr ax,15
-		jae @f
-			or eax,0xffff8000
+		movsx eax,ax
+		lea eax,[eax+eax*2] ;умножаем на 3 (число строк прокрутки за одно движение колеса мыши)
+		add eax,[ecx+sb_offs_position]
+		mov ebx,[ecx+sb_offs_max_area]
+		shl ebx,1
+		sub ebx,[ecx+sb_offs_cur_area] ;отнимаем половину высоты окна
+		shr ebx,1
+		cmp eax,ebx
+		jae .no_scroll
+		mov ebx,ted_cur_y ;позиция курсора
+		sub ebx,eax       ;- новая позиция скроллинга
+		add ebx,[ecx+sb_offs_position] ;+ старая позиция скроллинга
+		bt ebx,31
+		jnc @f
+			xor ebx,ebx ;если курсор стал выше окна, то ставим на верхнюю строку
 		@@:
-		add [ecx+sb_offs_position],eax
-
-		mov eax,[ecx+sb_offs_position]
-		cmp eax,[ecx+sb_offs_max_area]
-		jb @f
-			mov [ecx+sb_offs_position],ebx ;if scroll position out of range
-			jmp .no_scroll
+		inc ebx
+		cmp ebx,[ecx+sb_offs_cur_area]
+		jle @f
+			mov ebx,[ecx+sb_offs_cur_area] ;если курсор стал ниже окна, то ставим на нижнюю строку
 		@@:
+		dec ebx
+		mov ted_cur_y,ebx
+		mov [ecx+sb_offs_position],eax
 		stdcall ted_draw,edi
 	.no_scroll:
 	pop ecx ebx eax

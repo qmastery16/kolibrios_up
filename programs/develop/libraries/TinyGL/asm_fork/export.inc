@@ -141,7 +141,7 @@ E_LIB glPolygonOffset ;(float, float)
 ;E_LIB glDepthFunc(int)
 ;E_LIB glBlendFunc(int, int)
 ;E_LIB glTexEnvf(int, int, int)
-;E_LIB glOrtho(float, float, float, float, float, float)
+E_LIB glOrtho ;(float, float, float, float, float, float)
 ;E_LIB glVertex2i(int, int)
 ;E_LIB glDepthMask(int)
 ;E_LIB glFogi(int, int)
@@ -161,6 +161,7 @@ E_LIB glClose ;(void)
 ; glu functions
 ;
 
+E_LIB gluPerspective ;(double, double, double, double)
 E_LIB gluNewQuadric
 E_LIB gluDeleteQuadric
 E_LIB gluQuadricDrawStyle

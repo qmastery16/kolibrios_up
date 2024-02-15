@@ -1,6 +1,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                                 ;;
-;; Copyright (C) KolibriOS team 2004-2017. All rights reserved.    ;;
+;; Copyright (C) KolibriOS team 2004-2021. All rights reserved.    ;;
 ;; Distributed under terms of the GNU General Public License       ;;
 ;;                                                                 ;;
 ;;  Part of the TCP/IP network stack for KolibriOS                 ;;
@@ -15,7 +15,7 @@
 ;;                                                                 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-$Revision: 6916 $
+$Revision: 9917 $
 
 struct  SOCKET
 
@@ -40,6 +40,8 @@ struct  SOCKET
         snd_proc                dd ?
         rcv_proc                dd ?
         connect_proc            dd ?
+        ;sndto_proc              dd ?
+        ;rcvfrom_proc            dd ?
 
 ends
 
@@ -169,6 +171,15 @@ struct  STREAM_SOCKET           TCP_SOCKET
 
 ends
 
+struct sockaddr
+
+        family                  dw ?    ; Address family
+        port                    dw ?    ; 16 bit TCP/UDP port number
+        ip                      dd ?    ; 32 bit IP address
+        _zero                   rb 8    ; Not use, for align
+
+ends
+
 struct  socket_queue_entry
 
         data_ptr                dd ?
@@ -247,7 +258,7 @@ macro   socket_init {
 align 4
 sys_socket:
 
-        mov     dword[esp+20], 0        ; Set error code to 0
+        mov     dword[esp + SYSCALL_STACK.ebx], 0        ; Set error code to 0
 
         cmp     ebx, 255
         jz      socket_debug
@@ -268,11 +279,14 @@ sys_socket:
         dd      socket_set_opt          ; 8
         dd      socket_get_opt          ; 9
         dd      socket_pair             ; 10
+
+        ;dd      socket_sendto           ; 11
+        ;dd      socket_recvfrom         ; 12
   .number = ($ - .table) / 4 - 1
 
   .error:
-        mov     dword[esp+32], -1
-        mov     dword[esp+20], EINVAL
+        mov     dword[esp + SYSCALL_STACK.eax], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], EINVAL
 
         ret
 
@@ -292,7 +306,7 @@ sys_socket:
 align 4
 socket_open:
 
-        DEBUGF  DEBUG_NETWORK_VERBOSE, "SOCKET_open: domain=%u type=%u protocol=%x ", ecx, edx, esi
+        DEBUGF  DEBUG_NETWORK_VERBOSE, "SOCKET_open: domain=%u type=%u protocol=%x\n", ecx, edx, esi
 
         push    ecx edx esi
         call    socket_alloc
@@ -300,8 +314,8 @@ socket_open:
         test    eax, eax
         jz      .nobuffs
 
-        mov     [esp+32], edi           ; return socketnumber
-        DEBUGF  DEBUG_NETWORK_VERBOSE, "socknum=%u\n", edi
+        mov     [esp + SYSCALL_STACK.eax], edi    ; return socketnumber
+        DEBUGF  DEBUG_NETWORK_VERBOSE, "SOCKET_open: socknum=%u\n", edi
 
         test    edx, SO_NONBLOCK
         jz      @f
@@ -332,21 +346,21 @@ socket_open:
         cmp     ecx, AF_PPP
         jne     .no_ppp
 
-        cmp     esi, PPP_PROTO_ETHERNET
-        je      .pppoe
+;        cmp     esi, PPP_PROTO_ETHERNET
+;        je      .pppoe
 
   .no_ppp:
   .unsupported:
         push    eax
         call    socket_free
         pop     eax
-        mov     dword[esp+20], EOPNOTSUPP
-        mov     dword[esp+32], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], EOPNOTSUPP
+        mov     dword[esp + SYSCALL_STACK.eax], -1
         ret
 
   .nobuffs:
-        mov     dword[esp+20], ENOBUFS
-        mov     dword[esp+32], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], ENOBUFS
+        mov     dword[esp + SYSCALL_STACK.eax], -1
         ret
 
   .raw:
@@ -374,7 +388,7 @@ align 4
   .tcp:
         mov     [eax + SOCKET.Protocol], IP_PROTO_TCP
         mov     [eax + SOCKET.snd_proc], socket_send_tcp
-        mov     [eax + SOCKET.rcv_proc], socket_receive_stream
+        mov     [eax + SOCKET.rcv_proc], socket_receive_tcp
         mov     [eax + SOCKET.connect_proc], tcp_connect
 
         tcp_init_socket eax
@@ -404,15 +418,15 @@ align 4
         mov     [eax + SOCKET.connect_proc], ipv4_connect
         ret
 
-align 4
-  .pppoe:
-        push    eax
-        init_queue (eax + SOCKET_QUEUE_LOCATION)        ; Set up data receiving queue
-        pop     eax
-
-        mov     [eax + SOCKET.snd_proc], socket_send_pppoe
-        mov     [eax + SOCKET.rcv_proc], socket_receive_dgram
-        ret
+;align 4
+;  .pppoe:
+;        push    eax
+;        init_queue (eax + SOCKET_QUEUE_LOCATION)        ; Set up data receiving queue
+;        pop     eax
+;
+;        mov     [eax + SOCKET.snd_proc], socket_send_pppoe
+;        mov     [eax + SOCKET.rcv_proc], socket_receive_dgram
+;        ret
 
 
 ;-----------------------------------------------------------------;
@@ -450,18 +464,18 @@ socket_bind:
         je      .af_local
 
   .notsupp:
-        mov     dword[esp+20], EOPNOTSUPP
-        mov     dword[esp+32], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], EOPNOTSUPP
+        mov     dword[esp + SYSCALL_STACK.eax], -1
         ret
 
   .invalid:
-        mov     dword[esp+20], EINVAL
-        mov     dword[esp+32], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], EINVAL
+        mov     dword[esp + SYSCALL_STACK.eax], -1
         ret
 
   .af_local:
         ; TODO: write code here
-        mov     dword[esp+32], 0
+        mov     dword[esp + SYSCALL_STACK.eax], 0
         ret
 
   .af_inet4:
@@ -496,12 +510,12 @@ socket_bind:
         [eax + IP_SOCKET.LocalIP + 0]:1,[eax + IP_SOCKET.LocalIP + 1]:1,\
         [eax + IP_SOCKET.LocalIP + 2]:1,[eax + IP_SOCKET.LocalIP + 3]:1
 
-        mov     dword[esp+32], 0
+        mov     dword[esp + SYSCALL_STACK.eax], 0
         ret
 
   .addrinuse:
-        mov     dword[esp+32], -1
-        mov     dword[esp+20], EADDRINUSE
+        mov     dword[esp + SYSCALL_STACK.eax], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], EADDRINUSE
         ret
 
 
@@ -540,24 +554,24 @@ socket_connect:
 
         call    [eax + SOCKET.connect_proc]
 
-        mov     dword[esp+20], ebx
-        mov     dword[esp+32], eax
+        mov     dword[esp + SYSCALL_STACK.ebx], ebx
+        mov     dword[esp + SYSCALL_STACK.eax], eax
         ret
 
 
   .notsupp:
-        mov     dword[esp+20], EOPNOTSUPP
-        mov     dword[esp+32], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], EOPNOTSUPP
+        mov     dword[esp + SYSCALL_STACK.eax], -1
         ret
 
   .invalid:
-        mov     dword[esp+20], EINVAL
-        mov     dword[esp+32], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], EINVAL
+        mov     dword[esp + SYSCALL_STACK.eax], -1
         ret
 
   .already:
-        mov     dword[esp+20], EALREADY
-        mov     dword[esp+32], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], EALREADY
+        mov     dword[esp + SYSCALL_STACK.eax], -1
         ret
 
 
@@ -600,7 +614,7 @@ socket_listen:
 
         cmp     [eax + IP_SOCKET.LocalIP], 0
         jne     @f
-        push    [IP_LIST + 4]           ;;; fixme!!!!
+        push    [IPv4_address + 4]           ;;; fixme!!!!
         pop     [eax + IP_SOCKET.LocalIP]
        @@:
 
@@ -618,22 +632,22 @@ socket_listen:
         init_queue (eax + SOCKET_QUEUE_LOCATION)                ; Set up sockets queue
         pop     eax
 
-        mov     dword[esp+32], 0
+        mov     dword[esp + SYSCALL_STACK.eax], 0
         ret
 
   .notsupp:
-        mov     dword[esp+20], EOPNOTSUPP
-        mov     dword[esp+32], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], EOPNOTSUPP
+        mov     dword[esp + SYSCALL_STACK.eax], -1
         ret
 
   .invalid:
-        mov     dword[esp+20], EINVAL
-        mov     dword[esp+32], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], EINVAL
+        mov     dword[esp + SYSCALL_STACK.eax], -1
         ret
 
   .already:
-        mov     dword[esp+20], EALREADY
-        mov     dword[esp+32], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], EALREADY
+        mov     dword[esp + SYSCALL_STACK.eax], -1
         ret
 
 
@@ -679,13 +693,13 @@ socket_accept:
         jz      .invalid
 
 ; Change sockets thread owner ID to that of the current thread
-        mov     ebx, [TASK_BASE]
-        mov     ebx, [ebx + TASKDATA.pid]
+        mov     ebx, [current_slot]
+        mov     ebx, [ebx + APPDATA.tid]
         mov     [eax + SOCKET.TID], ebx
 
 ; Return socket number to caller
         mov     eax, [eax + SOCKET.Number]
-        mov     [esp+32], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
         ret
 
   .block:
@@ -696,18 +710,18 @@ socket_accept:
         jmp     .loop
 
   .wouldblock:
-        mov     dword[esp+20], EWOULDBLOCK
-        mov     dword[esp+32], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], EWOULDBLOCK
+        mov     dword[esp + SYSCALL_STACK.eax], -1
         ret
 
   .invalid:
-        mov     dword[esp+20], EINVAL
-        mov     dword[esp+32], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], EINVAL
+        mov     dword[esp + SYSCALL_STACK.eax], -1
         ret
 
   .notsupp:
-        mov     dword[esp+20], EOPNOTSUPP
-        mov     dword[esp+32], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], EOPNOTSUPP
+        mov     dword[esp + SYSCALL_STACK.eax], -1
         ret
 
 ;-----------------------------------------------------------------;
@@ -730,7 +744,7 @@ socket_close:
         test    eax, eax
         jz      .invalid
 
-        mov     dword[esp+32], 0                                ; The socket exists, so we will succeed in closing it.
+        mov     dword[esp + SYSCALL_STACK.eax], 0               ; The socket exists, so we will succeed in closing it.
 
         or      [eax + SOCKET.options], SO_NONBLOCK             ; Mark the socket as non blocking, we dont want it to block any longer!
 
@@ -750,18 +764,21 @@ socket_close:
         ret
 
   .tcp:
-        call    tcp_usrclosed
-
-        test    eax, eax
+        test    [eax + SOCKET.state], SS_ISCONNECTED
         jz      @f
-        call    tcp_output                                      ; If connection is not closed yet, send the FIN
+        test    [eax + SOCKET.state], SS_ISDISCONNECTING
+        jnz     @f
+        call    tcp_disconnect
   @@:
+; TODO:
+; ...
+;       call    socket_free
         ret
 
 
   .invalid:
-        mov     dword[esp+20], EINVAL
-        mov     dword[esp+32], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], EINVAL
+        mov     dword[esp + SYSCALL_STACK.eax], -1
         ret
 
 
@@ -771,7 +788,7 @@ socket_close:
 ;                                                                 ;
 ;   IN: ecx = socket number                                       ;
 ;       edx = addr to application buffer                          ;
-;       edx = length of application buffer                        ;
+;       esi = length of application buffer                        ;
 ;       edi = flags                                               ;
 ;                                                                 ;
 ;  OUT: eax = number of bytes copied                              ;
@@ -788,6 +805,9 @@ socket_receive:
         call    socket_num_to_ptr
         test    eax, eax
         jz      .invalid
+
+        stdcall is_region_userspace, edx, esi
+        jnz     .invalid
 
   .loop:
         push    edi
@@ -816,8 +836,8 @@ socket_receive:
   .return_err:
         mov     ecx, -1
   .return:
-        mov     [esp+20], ebx
-        mov     [esp+32], ecx
+        mov     [esp + SYSCALL_STACK.ebx], ebx
+        mov     [esp + SYSCALL_STACK.eax], ecx
         ret
 
   .last_data:
@@ -896,6 +916,20 @@ socket_receive_dgram:
   @@:
         ret
 
+align 4
+socket_receive_tcp:
+
+        call    socket_receive_stream
+
+        test    ecx, ecx
+        jz      @f
+        push    eax ebx ecx
+        call    tcp_output
+        pop     ecx ebx eax
+  @@:
+
+        ret
+
 
 align 4
 socket_receive_local:
@@ -905,8 +939,8 @@ socket_receive_local:
         jne     @f
 
         ; Change PID to that of current process
-        mov     ebx, [TASK_BASE]
-        mov     ebx, [ebx + TASKDATA.pid]
+        mov     ebx, [current_slot]
+        mov     ebx, [ebx + APPDATA.tid]
         mov     [eax + SOCKET.PID], ebx
         mov     [eax + SOCKET.TID], ebx                         ; currently TID = PID in kolibrios :(
       @@:
@@ -920,7 +954,7 @@ socket_receive_stream:
 
         DEBUGF  DEBUG_NETWORK_VERBOSE, "SOCKET_receive: STREAM\n"
 
-        cmp     [eax + STREAM_SOCKET.rcv + RING_BUFFER.size], 0
+        cmp     [eax + STREAM_SOCKET.rcv.size], 0
         je      .wouldblock
 
         test    edi, MSG_PEEK
@@ -936,7 +970,7 @@ socket_receive_stream:
         call    socket_ring_free                                ; free read memory
         pop     eax
 
-        cmp     [eax + STREAM_SOCKET.rcv + RING_BUFFER.size], 0
+        cmp     [eax + STREAM_SOCKET.rcv.size], 0
         jne     .more_data
         xor     ebx, ebx                                        ; errorcode = 0 (no error)
         ret
@@ -953,7 +987,7 @@ socket_receive_stream:
         ret
 
   .peek:
-        mov     ecx, [eax + STREAM_SOCKET.rcv + RING_BUFFER.size]
+        mov     ecx, [eax + STREAM_SOCKET.rcv.size]
         xor     ebx, ebx
         ret
 
@@ -981,14 +1015,17 @@ socket_send:
         test    eax, eax
         jz      .invalid
 
+        stdcall is_region_userspace, edx, esi
+        jnz     .invalid
+
         mov     ecx, esi
         mov     esi, edx
 
         jmp     [eax + SOCKET.snd_proc]
 
   .invalid:
-        mov     dword[esp+20], EINVAL
-        mov     dword[esp+32], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], EINVAL
+        mov     dword[esp + SYSCALL_STACK.eax], -1
         ret
 
 
@@ -997,15 +1034,15 @@ socket_send_udp:
 
         DEBUGF  DEBUG_NETWORK_VERBOSE, "SOCKET_send: UDP\n"
 
-        mov     [esp+32], ecx
+        mov     [esp + SYSCALL_STACK.eax], ecx
         call    udp_output
         cmp     eax, -1
         je      .error
         ret
 
   .error:
-        mov     dword[esp+32], -1
-        mov     dword[esp+20], EMSGSIZE ; FIXME: UDP_output should return error codes!
+        mov     dword[esp + SYSCALL_STACK.eax], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], EMSGSIZE ; FIXME: UDP_output should return error codes!
         ret
 
 
@@ -1019,13 +1056,13 @@ socket_send_tcp:
         call    socket_ring_write
         pop     eax
 
-        mov     [esp+32], ecx
+        mov     [esp + SYSCALL_STACK.eax], ecx
         mov     [eax + SOCKET.errorcode], 0
         push    eax
         call    tcp_output              ; FIXME: this doesnt look pretty, does it?
         pop     eax
         mov     eax, [eax + SOCKET.errorcode]
-        mov     [esp+20], eax
+        mov     [esp + SYSCALL_STACK.ebx], eax
         ret
 
 
@@ -1034,15 +1071,15 @@ socket_send_ip:
 
         DEBUGF  DEBUG_NETWORK_VERBOSE, "SOCKET_send: IPv4\n"
 
-        mov     [esp+32], ecx
+        mov     [esp + SYSCALL_STACK.eax], ecx
         call    ipv4_output_raw
         cmp     eax, -1
         je      .error
         ret
 
   .error:
-        mov     dword[esp+32], eax
-        mov     dword[esp+20], ebx
+        mov     dword[esp + SYSCALL_STACK.eax], eax
+        mov     dword[esp + SYSCALL_STACK.ebx], ebx
         ret
 
 
@@ -1051,35 +1088,35 @@ socket_send_icmp:
 
         DEBUGF  DEBUG_NETWORK_VERBOSE, "SOCKET_send: ICMP\n"
 
-        mov     [esp+32], ecx
+        mov     [esp + SYSCALL_STACK.eax], ecx
         call    icmp_output_raw
         cmp     eax, -1
         je      .error
         ret
 
   .error:
-        mov     dword[esp+32], eax
-        mov     dword[esp+20], ebx
+        mov     dword[esp + SYSCALL_STACK.eax], eax
+        mov     dword[esp + SYSCALL_STACK.ebx], ebx
         ret
 
 
-align 4
-socket_send_pppoe:
-
-        DEBUGF  DEBUG_NETWORK_VERBOSE, "SOCKET_send: PPPoE\n"
-
-        mov     [esp+32], ecx
-        mov     ebx, [eax + SOCKET.device]
-
-        call    pppoe_discovery_output  ; FIXME: errorcodes
-        cmp     eax, -1
-        je      .error
-        ret
-
-  .error:
-        mov     dword[esp+32], -1
-        mov     dword[esp+20], EMSGSIZE
-        ret
+;align 4
+;socket_send_pppoe:
+;
+;        DEBUGF  DEBUG_NETWORK_VERBOSE, "SOCKET_send: PPPoE\n"
+;
+;        mov     [esp + SYSCALL_STACK.eax], ecx
+;        mov     ebx, [eax + SOCKET.device]
+;
+;        call    pppoe_discovery_output  ; FIXME: errorcodes
+;        cmp     eax, -1
+;        je      .error
+;        ret
+;
+;  .error:
+;        mov     dword[esp + SYSCALL_STACK.eax], -1
+;        mov     dword[esp + SYSCALL_STACK.ebx], EMSGSIZE
+;        ret
 
 
 
@@ -1091,8 +1128,8 @@ socket_send_local:
         jne     @f
 
         ; Change PID to that of current process
-        mov     ebx, [TASK_BASE]
-        mov     ebx, [ebx + TASKDATA.pid]
+        mov     ebx, [current_slot]
+        mov     ebx, [ebx + APPDATA.tid]
         mov     [eax + SOCKET.PID], ebx
         mov     [eax + SOCKET.TID], ebx         ; currently TID = PID in kolibrios :(
       @@:
@@ -1115,7 +1152,7 @@ socket_send_local_initialized:
         pop     eax
 
         ; return the number of written bytes (or errorcode) to application
-        mov     [esp+32], ecx
+        mov     [esp + SYSCALL_STACK.eax], ecx
 
         ; and notify the other end
         call    socket_notify
@@ -1123,8 +1160,8 @@ socket_send_local_initialized:
         ret
 
   .invalid:
-        mov     dword[esp+32], -1
-        mov     dword[esp+20], EINVAL
+        mov     dword[esp + SYSCALL_STACK.eax], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], EINVAL
         ret
 
 
@@ -1181,12 +1218,12 @@ socket_get_opt:
         jz      @f
         mov     [eax], ecx
 @@:
-        mov     dword [esp+32], 0
+        mov     dword [esp + SYSCALL_STACK.eax], 0
         ret
 
   .invalid:
-        mov     dword[esp+32], -1
-        mov     dword[esp+20], EINVAL
+        mov     dword[esp + SYSCALL_STACK.eax], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], EINVAL
         ret
 
 
@@ -1228,20 +1265,20 @@ socket_set_opt:
         cmp     edx, NET_DEVICES_MAX
         ja      .invalid
 
-        mov     edx, [NET_DRV_LIST + 4*edx]
+        mov     edx, [net_device_list + 4*edx]
         test    edx, edx
         jz      .already
         mov     [eax + SOCKET.device], edx
 
         DEBUGF  DEBUG_NETWORK_VERBOSE, "SOCKET_set_opt: Bound socket %x to device %x\n", eax, edx
 
-        mov     dword[esp+32], 0        ; success!
+        mov     dword[esp + SYSCALL_STACK.eax], 0        ; success!
         ret
 
   .unbind:
         mov     [eax + SOCKET.device], 0
 
-        mov     dword[esp+32], 0        ; success!
+        mov     dword[esp + SYSCALL_STACK.eax], 0        ; success!
         ret
 
   .ip:
@@ -1252,17 +1289,17 @@ socket_set_opt:
         mov     bl, byte[edx + socket_options.optval]
         mov     [eax + IP_SOCKET.ttl], bl
 
-        mov     dword[esp+32], 0        ; success!
+        mov     dword[esp + SYSCALL_STACK.eax], 0        ; success!
         ret
 
   .already:
-        mov     dword[esp+20], EALREADY
-        mov     dword[esp+32], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], EALREADY
+        mov     dword[esp + SYSCALL_STACK.eax], -1
         ret
 
   .invalid:
-        mov     dword[esp+20], EINVAL
-        mov     dword[esp+32], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], EINVAL
+        mov     dword[esp + SYSCALL_STACK.eax], -1
         ret
 
 
@@ -1288,7 +1325,7 @@ socket_pair:
         call    socket_alloc
         test    eax, eax
         jz      .nomem1
-        mov     [esp+32], edi   ; application's eax
+        mov     [esp + SYSCALL_STACK.eax], edi   ; application's eax
 
         mov     [eax + SOCKET.Domain], AF_LOCAL
         mov     [eax + SOCKET.Type], SOCK_STREAM
@@ -1301,7 +1338,7 @@ socket_pair:
         call    socket_alloc
         test    eax, eax
         jz      .nomem2
-        mov     [esp+20], edi   ; application's ebx
+        mov     [esp + SYSCALL_STACK.ebx], edi   ; application's ebx
 
         mov     [eax + SOCKET.Domain], AF_LOCAL
         mov     [eax + SOCKET.Type], SOCK_STREAM
@@ -1327,15 +1364,15 @@ socket_pair:
         ret
 
   .nomem2:
-        mov     eax, [esp+20]
+        mov     eax, [esp + SYSCALL_STACK.ebx]
         call    socket_free
 
   .nomem1:
-        mov     eax, [esp+32]
+        mov     eax, [esp + SYSCALL_STACK.eax]
         call    socket_free
 
-        mov     dword[esp+32], -1
-        mov     dword[esp+20], ENOMEM
+        mov     dword[esp + SYSCALL_STACK.eax], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], ENOMEM
         ret
 
 
@@ -1366,6 +1403,9 @@ socket_debug:
         test    eax, eax
         jz      .invalid
 
+        stdcall is_region_userspace, edi, SOCKET_STRUCT_SIZE
+        jnz     .invalid
+
         mov     esi, eax
         mov     ecx, SOCKET_STRUCT_SIZE/4
         rep movsd
@@ -1385,12 +1425,12 @@ socket_debug:
   .done:
         xor     eax, eax
         stosd
-        mov     dword[esp+32], eax
+        mov     dword[esp + SYSCALL_STACK.eax], eax
         ret
 
   .invalid:
-        mov     dword[esp+32], -1
-        mov     dword[esp+20], EINVAL
+        mov     dword[esp + SYSCALL_STACK.eax], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], EINVAL
         ret
 
 
@@ -1561,7 +1601,7 @@ socket_input:
         jmp     socket_notify
 
   .full:
-        DEBUGF  DEBUG_NETWORK_VERBOSE, "SOCKET_input: socket %x is full!\n", eax
+        DEBUGF  DEBUG_NETWORK_ERROR, "SOCKET_input: socket %x is full!\n", eax
 
         pusha
         lea     ecx, [eax + SOCKET.mutex]
@@ -1657,7 +1697,6 @@ socket_ring_write:
         jb      @f
         sub     edi, SOCKET_BUFFER_SIZE                         ; WRAP
   @@:
-
         mov     [eax + RING_BUFFER.write_ptr], edi
         pop     edi
 
@@ -1753,7 +1792,7 @@ socket_ring_read:
         call    mutex_unlock                                    ; TODO: check what registers this function actually destroys
         popa
 
-        DEBUGF  DEBUG_NETWORK_VERBOSE, "SOCKET_ring_read: no data at all!\n"
+        DEBUGF  DEBUG_NETWORK_ERROR, "SOCKET_ring_read: no data at all!\n"
         xor     ecx, ecx
         ret
 
@@ -1800,7 +1839,7 @@ socket_ring_free:
         ret
 
   .error:       ; we could free all available bytes, but that would be stupid, i guess..
-        DEBUGF  DEBUG_NETWORK_VERBOSE, "SOCKET_ring_free: buffer=%x error!\n", eax
+        DEBUGF  DEBUG_NETWORK_ERROR, "SOCKET_ring_free: buffer=%x error!\n", eax
         add     [eax + RING_BUFFER.size], ecx
 
         push    eax
@@ -1830,17 +1869,16 @@ socket_block:
 
         pushf
         cli
-
         ; Set the 'socket is blocked' flag
         or      [eax + SOCKET.state], SS_BLOCKED
 
         ; Suspend the thread
         push    edx
-        mov     edx, [TASK_BASE]
-        mov     [edx + TASKDATA.state], 1               ; Suspended
+        mov     edx, [current_slot]
+        mov     [edx + APPDATA.state], TSTATE_RUN_SUSPENDED
 
         ; Remember the thread ID so we can wake it up again
-        mov     edx, [edx + TASKDATA.pid]
+        mov     edx, [edx + APPDATA.tid]
         DEBUGF  DEBUG_NETWORK_VERBOSE, "SOCKET_block: suspending thread: %u\n", edx
         mov     [eax + SOCKET.TID], edx
         pop     edx
@@ -1871,20 +1909,20 @@ socket_notify:
         call    socket_check
         jz      .error
 
-; Find the associated thread's TASK_DATA
+; Find the associated thread's
         push    ebx ecx esi
         mov     ebx, [eax + SOCKET.TID]
         test    ebx, ebx
         jz      .error2
         xor     ecx, ecx
         inc     ecx
-        mov     esi, TASK_DATA
+        mov     esi, SLOT_BASE + sizeof.APPDATA
   .next:
-        cmp     [esi + TASKDATA.pid], ebx
+        cmp     [esi + APPDATA.tid], ebx
         je      .found
         inc     ecx
-        add     esi, 0x20
-        cmp     ecx, [TASK_COUNT]
+        add     esi, sizeof.APPDATA
+        cmp     ecx, [thread_count]
         jbe     .next
 
   .error2:
@@ -1903,8 +1941,7 @@ socket_notify:
 
 ; Socket and thread exists and socket is of non blocking type.
 ; We'll try to flag an event to the thread.
-        shl     ecx, 8
-        or      [SLOT_BASE + ecx + APPDATA.event_mask], EVENT_NETWORK
+        or      [esi + APPDATA.occurred_events], EVENT_NETWORK
 
         DEBUGF  DEBUG_NETWORK_VERBOSE, "SOCKET_notify: poking thread %u!\n", ebx
         pop     esi ecx ebx
@@ -1915,7 +1952,7 @@ socket_notify:
 ; Socket and thread exists and socket is of blocking type
 ; We'll try to unblock it.
         and     [eax + SOCKET.state], not SS_BLOCKED    ; Clear the 'socket is blocked' flag
-        mov     [esi + TASKDATA.state], 0               ; Run the thread
+        mov     [esi + APPDATA.state], TSTATE_RUNNING  ; Run the thread
 
         DEBUGF  DEBUG_NETWORK_VERBOSE, "SOCKET_notify: Unblocked socket!\n"
         pop     esi ecx ebx
@@ -1985,8 +2022,8 @@ socket_alloc:
         DEBUGF  DEBUG_NETWORK_VERBOSE, "SOCKET_alloc: number=%u\n", edi
 
 ; Fill in PID
-        mov     ebx, [TASK_BASE]
-        mov     ebx, [ebx + TASKDATA.pid]
+        mov     ebx, [current_slot]
+        mov     ebx, [ebx + APPDATA.tid]
         mov     [eax + SOCKET.PID], ebx
         mov     [eax + SOCKET.TID], ebx         ; currently TID = PID in kolibrios :(
 
@@ -2299,8 +2336,8 @@ socket_check_owner:
         DEBUGF  DEBUG_NETWORK_VERBOSE, "SOCKET_check_owner: %x\n", eax
 
         push    ebx
-        mov     ebx, [TASK_BASE]
-        mov     ebx, [ebx + TASKDATA.pid]
+        mov     ebx, [current_slot]
+        mov     ebx, [ebx + APPDATA.tid]
         cmp     [eax + SOCKET.PID], ebx
         pop     ebx
 
@@ -2505,6 +2542,6 @@ socket_cant_send_more:
         jmp     socket_notify
 
   .notconn:
-        mov     dword[esp+20], ENOTCONN
-        mov     dword[esp+32], -1
+        mov     dword[esp + SYSCALL_STACK.ebx], ENOTCONN
+        mov     dword[esp + SYSCALL_STACK.eax], -1
         ret

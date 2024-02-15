@@ -1,11 +1,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                              ;;
-;; Copyright (C) KolibriOS team 2004-2015. All rights reserved. ;;
+;; Copyright (C) KolibriOS team 2004-2022. All rights reserved. ;;
 ;; Distributed under terms of the GNU General Public License    ;;
 ;;                                                              ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-$Revision: 7522 $
+$Revision: 9958 $
 
 
 keymap:
@@ -147,9 +147,9 @@ msg_unresolved db 'unresolved ',0
 ;end if
 msg_CR         db  13,10,0
 
-szPS2MDriver    db '/rd/1/drivers/PS2MOUSE.SYS',0
+szPS2MDriver    db '/sys/drivers/PS2MOUSE.SYS',0
 ;szCOM_MDriver   db 'COM_MOUSE',0
-szVidintel      db '/rd/1/drivers/vidintel.sys',0
+szVidintel      db '/sys/drivers/vidintel.sys',0
 szUSB           db 'USB',0
 
 szEXPORTS      db 'EXPORTS',0
@@ -158,8 +158,8 @@ sz_EXPORTS     db '_EXPORTS',0
 szIMPORTS      db 'IMPORTS',0
 
 read_firstapp  db '/sys/'
-firstapp       db '/RD/1/LAUNCHER',0
-notifyapp      db '/RD/1/@notify',0
+firstapp       db '/sys/LAUNCHER',0
+notifyapp      db '/sys/@notify',0
 if lang eq ru
 ud_user_message  cp866 'Ошибка: неподдерживаемая инструкция процессора',0
 mtrr_user_message cp866 '"Обнаружена проблема с конфигурацией MTRR.\nПроизводительность может быть пониженной" -dW',0
@@ -168,17 +168,19 @@ ud_user_message db 'Error: unsupported processor instruction',0
 mtrr_user_message db '"There is a problem with MTRR configuration.\nPerformance can be low" -dW',0
 end if
 
-vmode          db  '/sys/drivers/VMODE.MDR',0
 kernel_file_load:
 ; load kernel.mnt to _CLEAN_ZONE
         dd      0       ; subfunction
         dq      0       ; offset in file
         dd      0x31000 ; number of bytes to read
         dd      _CLEAN_ZONE ; buffer for data
-        db      '/RD/1/KERNEL.MNT',0
+        db      '/sys/KERNEL.MNT',0
 
 dev_data_path  db '/RD/1/DRIVERS/DEVICES.DAT',0
-
+; { Patch by Coldy, For DLL autoload
+dll_lib_path  db '/SYS/LIB/DLL.OBJ',0
+dll_error_msg db '"DLL.OBJ not found!\nTerminate application!" -dE',0   
+; } End patch by Coldy, For DLL autoload
 align 4
 
 shmem_list:
@@ -197,27 +199,36 @@ MAX_DEFAULT_DLL_ADDR = 0x80000000
 MIN_DEFAULT_DLL_ADDR = 0x70000000
 dll_cur_addr   dd MIN_DEFAULT_DLL_ADDR
 
-; supported videomodes
-
-
-; mike.dld {
-;db 0
-;dd servetable-0x10000
-;align 4
-;draw_line       dd __sys_draw_line
-;draw_pointer    dd __sys_draw_pointer
-;//mike.dld, 2006-08-02 [
-;;drawbar         dd __sys_drawbar
-;;drawbar         dd __sys_drawbar.forced
-;drawbar         dd vesa20_drawbar
-;//mike.dld, 2006-08-02 ]
-;putpixel        dd __sys_putpixel
-; } mike.dld
-
 
 align 4
-keyboard   dd 1
-syslang    dd 1
+keyboard   dd SYSLANG
+
+if lang eq en
+  SYSLANG = 1
+else if lang eq fi
+  SYSLANG = 2
+else if lang eq ge
+  SYSLANG = 3
+else if lang eq ru
+  SYSLANG = 4
+else if lang eq fr
+  SYSLANG = 5
+else if lang eq et
+  SYSLANG = 6
+else if lang eq ua
+  SYSLANG = 7
+else if lang eq it
+  SYSLANG = 8
+else if lang eq be
+  SYSLANG = 9
+else if lang eq sp
+  SYSLANG = 10
+else if lang eq ca
+  SYSLANG = 11
+else
+  display 'unsupported language specified',13,10
+end if
+syslang    dd SYSLANG
 
 boot_y     dd 10
 
@@ -327,10 +338,10 @@ tls_data_l:
         db drw3
         dw D32
 
-endofcode:
 gdte:
 
 diff16 "end of .data segment",0,$
+endofcode:
 
 align 16
 cur_saved_data:
@@ -339,11 +350,9 @@ align 64
 fpu_data:
         rb  0xa80       ; bochs avx512
 fpu_data_size = $ - fpu_data
-draw_data:
-        rb  32*256
+
 BPSLine_calc_area   rd  MAX_SCREEN_HEIGHT
 d_width_calc_area   rd  MAX_SCREEN_HEIGHT
-mouseunder          rd  16*24
 
 mem_block_list      rd  64*2
 mem_used_list       rd  64*2
@@ -385,12 +394,13 @@ BANK_SWITCH         dd  ?   ; reserved for vesa 1.2
 BANK_RW             dd  ?
 end if
 
-MOUSE_PICTURE       dd  ?
-
 def_cursor          dd  ?
 def_cursor_clock    dd  ?
+def_cursor_hresize  dd  ?
+def_cursor_vresize  dd  ?
+def_cursor_dresize1 dd  ?
+def_cursor_dresize2 dd  ?
 current_cursor      dd  ?
-hw_cursor           dd  ?
 cur_saved_base      dd  ?
 
 cur.lock            dd  ?   ; 1 - lock update, 2- hide
@@ -414,14 +424,16 @@ default_io_map      dd  ?
 LFBSize             dd  ?
 
 current_process     dd  ?
-current_slot        dd  ?   ; i.e. cureent thread
+current_slot        dd  ?   ; pointer to APPDATA of current thread
+current_slot_idx    dd  ?   ; index of current thread slot
+thread_count        dd  ?
 
 ; device addresses
 mididp  dd  ?
 midisp  dd  ?
 
-cdbase  dd  ?
-cdid    dd  ?
+;cdbase  dd  ?
+;cdid    dd  ?
 
 hdbase  dd  ?   ; for boot 0x1f0
 hdid    dd  ?
@@ -506,7 +518,10 @@ if ~ lang eq sp
 diff16 "end of .bss",0,$
 end if
 
-org (OS_BASE+0x0100000)
+; check if kernel fits memmap
+assert $-OS_BASE+PAGE_SIZE < TMP_STACK_TOP
+
+org (OS_BASE + RAMDISK_BASE)
 
 ; Currently size of memory allocated for the ramdisk is fixed.
 ; This should be revisited when/if memory map would become more dynamic.
@@ -528,3 +543,6 @@ RESERVED_PORTS:
         rb  64*1024
 sys_pgmap:
         rb  1024*1024/8
+
+
+CDDataBuf: rb 0x1000

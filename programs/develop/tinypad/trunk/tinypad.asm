@@ -52,7 +52,7 @@ ASEPC = '-'  ; separator character (char)
 ATOPH = 19   ; menu bar height (pixels)
 SCRLW = 16   ; scrollbar widht/height (pixels)
 ATABW = 8    ; tab key indent width (chars)
-LINEH = 10   ; line height (pixels)
+LINEH = 16+1 ; line height (pixels)
 PATHL = 256  ; maximum path length (chars) !!! don't change !!!
 AMINS = 8    ; minimal scroll thumb size (pixels)
 LCHGW = 3    ; changed/saved marker width (pixels)
@@ -383,7 +383,7 @@ proc load_settings ;//////////////////////////////////////////////////////////
 	mov	[auto_braces],al
 	invoke	ini.get_int,ini_path,ini_sec_options,ini_options_auto_indent,1
 	mov	[auto_indent],al
-	invoke	ini.get_int,ini_path,ini_sec_options,ini_options_optim_save,1
+	invoke	ini.get_int,ini_path,ini_sec_options,ini_options_optim_save,0
 	mov	[optim_save],al
 	invoke	ini.get_int,ini_path,ini_sec_options,ini_options_line_nums,0
 	mov	[line_nums],al
@@ -413,9 +413,9 @@ proc load_settings ;//////////////////////////////////////////////////////////
 	mov	[mainwnd_pos.x],eax
 	invoke	ini.get_int,ini_path,ini_sec_window,ini_window_top,75
 	mov	[mainwnd_pos.y],eax
-	invoke	ini.get_int,ini_path,ini_sec_window,ini_window_width,6*80+6+SCRLW+5
+	invoke	ini.get_int,ini_path,ini_sec_window,ini_window_width,615;8*80+6+SCRLW+5
 	mov	[mainwnd_pos.w],eax
-	invoke	ini.get_int,ini_path,ini_sec_window,ini_window_height,402
+	invoke	ini.get_int,ini_path,ini_sec_window,ini_window_height,615
 	mov	[mainwnd_pos.h],eax
 
 	popad

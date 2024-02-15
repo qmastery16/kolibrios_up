@@ -1,11 +1,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                              ;;
-;; Copyright (C) KolibriOS team 2013-2015. All rights reserved. ;;
+;; Copyright (C) KolibriOS team 2013-2022. All rights reserved. ;;
 ;; Distributed under terms of the GNU General Public License    ;;
 ;;                                                              ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-$Revision: 5363 $
+$Revision: 9911 $
 
 
 ;------------------------------------------------------------------------------
@@ -49,6 +49,13 @@ align 4
 .2:
         dec     ebx  ; 2 - Write the data to the clipboard
         jnz     .3
+
+; check pointer on kernel address
+        stdcall is_region_userspace, edx, ecx
+        jz      @f
+        mov     eax, -1
+        jmp     .exit_1
+@@:
 ; check the lock
         mov     ebx, clipboard_write_lock
         xor     eax, eax
@@ -145,7 +152,7 @@ align 4
         xor     eax, eax
         inc     eax     ; error
 .exit_1:
-        mov     [esp + 32], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
 .exit:
         ret
 ;------------------------------------------------------------------------------

@@ -14,9 +14,10 @@
 *   You should have received a copy of the GNU General Public License
 *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-/* Kolibri port by Siemargl 2018 
+
+/* Kolibri port by Siemargl 2018 and update by maxcodehack 2020
  * my fixes mostly commented with triple comment ///
- * */
+ */
 
 /*** Include section ***/
 
@@ -43,8 +44,16 @@
 ///#include <termios.h>
 #include <time.h>
 ///#include <unistd.h>
-#include <conio.h>
 
+#ifdef TCC_BUILD
+#include <conio.h>
+#endif
+#ifdef GCC_BUILD
+#include "console_obj.h"
+#endif
+
+/// Notify
+void notify(char *text);
 
 
 /*** Define section ***/
@@ -94,7 +103,7 @@ struct editor_syntax {
     char** file_match;
     // This will be a NULL-terminated array of strings, each string containing
     // a keyword. To differentiate between the two types of keywords,
-    // we’ll terminate the second type of keywords with a pipe (|)
+    // we'll terminate the second type of keywords with a pipe (|)
     // character (also known as a vertical bar).
     char** keywords;
     // We let each language specify its own single-line comment pattern.
@@ -456,8 +465,6 @@ void enableRawMode() {
 ///        die("Failed to set raw mode");
 }
 
-
-
 /// by Siemargl rewritten, still Ctrl+ combination works only in english locale, so need analyze scancode
 int editorReadKey() {
     int key = con_getch2();
@@ -503,10 +510,10 @@ int editorReadKey() {
 
 			case 6: // Ctrl+F
 				return CTRL_KEY('f');
-
+/*
 			case 8: // Ctrl+H
 				return CTRL_KEY('h');
-
+*/
 			case 24: // Ctrl+X
 				return CTRL_KEY('x');
 				
@@ -1369,7 +1376,7 @@ void editorDrawWelcomeMessage(struct a_buf* ab) {
     // Using snprintf to truncate message in case the terminal
     // is too tiny to handle the entire string.
     int welcome_len = snprintf(welcome, sizeof(welcome),
-        "tte %s <http://dmoral.es/>", TTE_VERSION);
+        "TinyTextEditor %s", TTE_VERSION);
     if (welcome_len > ec.screen_cols)
         welcome_len = ec.screen_cols;
     // Centering the message.
@@ -1723,7 +1730,8 @@ void initEditor() {
 }
 
 void printHelp() {
-    printf("Usage: tte [OPTIONS] [FILE]\n\n");
+/*	
+	printf("Usage: tte [OPTIONS] [FILE]\n\n");
     printf("\nKEYBINDINGS\n-----------\n\n");
     printf("Keybinding\t\tAction\n\n");
     printf("Ctrl-Q,^Z \t\tExit\n");
@@ -1734,7 +1742,7 @@ void printHelp() {
     printf("Ctrl-C    \t\tCopy line\n");
     printf("Ctrl-X    \t\tCut line\n");
     printf("Ctrl-V    \t\tPaste line\n");
- ///   printf("Ctrl-P    \t\tPause tte (type \"fg\" to resume)\n");
+///   printf("Ctrl-P    \t\tPause tte (type \"fg\" to resume)\n");
 
     printf("\n\nOPTIONS\n-------\n\n");
     printf("Option        \t\tAction\n\n");
@@ -1742,6 +1750,29 @@ void printHelp() {
     printf("-v | --version\t\tPrints the version of tte\n");
 
     printf("\n\nFor now, usage of ISO 8859-1 is recommended.\n");
+*/
+    
+    /// NOTIFY HOTKEYS 
+    char* __help__ = 
+    "'Hotkeys: \n\
+^Q, ^Z   Exit \n\
+Ctrl-S   Save \n\
+Ctrl-F   Search. Esc, \n\
+    enter and arrows to interact once searching \n\
+Ctrl-E   Flip line upwards \n\
+Ctrl-D   Flip line downwards \n\
+Ctrl-C   Copy line \n\
+Ctrl-X   Cut line \n\
+Ctrl-V   Paste line' -t -I";
+    notify(__help__);
+    
+    /// NOTIFY OPTIONS
+    __help__ = 
+    "'Options:\n\
+-h, --help     Prints the help \n\
+-v, --version  Prints the version of tte \n\
+For now, usage of ISO 8859-1 is recommended.\n' -t -I";
+	notify(__help__);
 }
 
 // 1 if editor should open, 0 otherwise, -1 if the program should exit
@@ -1754,7 +1785,11 @@ int handleArgs(int argc, char* argv[]) {
             printHelp();
             return -1;
         } else if(strncmp("-v", argv[1], 2) == 0 || strncmp("--version", argv[1], 9) == 0) {
-            printf("tte - version %s\n", TTE_VERSION);
+            char _notify_version[256] = "'Version:\n";
+            strcat(_notify_version, TTE_VERSION);
+            strcat(_notify_version, "' -t -I");
+            /// printf("tte - version %s\n", TTE_VERSION);
+            notify(_notify_version);
             return -1;
         }
     }
@@ -1763,23 +1798,36 @@ int handleArgs(int argc, char* argv[]) {
 }
 
 int main(int argc, char* argv[]) {
-	if (con_init_console_dll()) return 1; // init fail
-
+	
+	#ifdef TCC_BUILD
+	con_init_console_dll_param(con_def_wnd_width, con_def_wnd_height, con_def_wnd_width, con_def_wnd_height, "TinyTextEditor");
+	#endif
+	#ifdef GCC_BUILD
+	load_console();
+	con_init(con_def_wnd_width, con_def_wnd_height, con_def_wnd_width, con_def_wnd_height, "TinyTextEditor");
+	#endif
+	
     initEditor();
     int arg_response = handleArgs(argc, argv);
-    if (arg_response == 1)
-        editorOpen(argv[1]);
+    if (arg_response == 1) {
+		char* filename = argv[1];
+		// tolower
+		for (int i = 0; i < strlen(filename); i++) filename[i] = tolower(filename[i]);
+		
+		editorOpen(filename);
+		char* title = argv[1];
+		strcat(title, " - TinyTextEditor");
+		con_set_title(title);
+	}  
     else if (arg_response == -1)
         return 0;
     enableRawMode();
-
     editorSetStatusMessage(" Ctrl-Q, ^Z to quit | Ctrl-S to save | (tte -h | --help for more info)");
 
     while (1) {
         editorRefreshScreen();
         editorProcessKeypress();
     }
-
 	con_exit(1);
     return 0;
 }

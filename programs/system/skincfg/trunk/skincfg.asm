@@ -23,15 +23,19 @@
 	dd IM_END	; file size
 	dd I_END	; memory
 	dd stacktop	; stack pointer
-	dd skin_info	; parameters
+	dd app_param	; parameters
 	dd cur_dir_path	; path to file
  
 include 'lang.inc'
+include '../../../proc32.inc'
 include '../../../config.inc'		;for nightbuild
 include '../../../macros.inc'
+include '../../../string.inc'
+include '../../../dll.inc'
 include 'kglobals.inc'
 include 'unpacker.inc'
-include '../../../develop/libraries/box_lib/load_lib.mac'
+include '../../../KOSfuncs.inc'
+include '../../../load_lib.mac'
 	@use_library
 ;******************************************************************************
 ;--------------------------------------
@@ -65,7 +69,7 @@ struct SKIN_BUTTONS
     left   dw ?
     top    dw ?
   size:
-    width  dw ?
+    w  dw ?
     height dw ?
 ends
 ;--------------------------------------
@@ -77,23 +81,28 @@ ends
 ;--------------------------------------
 frame_1:
   .x      = 5
-  .y      = 220
-  .width  = 420
-  .height = 50
+  .y      = area.y + area.height + 20
+  .w  = area.w + 217
+  .height = 65
 ;--------------------------------------  
 frame_2:
-  .x      = 5
-  .y      = 280
-  .width  = 420
-  .height = 50
+  .x      = frame_1.x
+  .y      = frame_1.y + frame_1.height + 20
+  .w  = frame_1.w
+  .height = frame_1.height
+;---------------------------------------------------------------------
+win:
+  .w = frame_2.w + frame_2.x + frame_2.x + 9
+  .h = frame_2.y + frame_2.height + 10
 ;---------------------------------------------------------------------
 START:		; start of execution
 ;---------------------------------------------------------------------
-	mcall	68,11
+	mcall	SF_SYS_MISC,SSF_HEAP_INIT
 	
 	test	eax,eax
 	jz	close	
 
+stdcall dll.Load,LibIniImportTable 
 load_libraries l_libs_start,end_l_libs
 
 ;if return code =-1 then exit, else nornary work
@@ -101,39 +110,35 @@ load_libraries l_libs_start,end_l_libs
 	test	eax,eax
 	jz	close
 ;---------------------------------------------------------------------
-	mov	edi,filename_area
-	mov	esi,start_temp_file_name
-	xor	eax,eax
-	cld
-@@:
-	lodsb
-	stosb
-	test	eax,eax
-	jnz	@b
-
-
-	mov	edi,fname
-	mov	esi,default_dtp
-	xor	eax,eax
-	cld
-@@:
-	lodsb
-	stosb
-	test	eax,eax
-	jnz	@b
-
+; set default pathes
+	stdcall string.copy, default_skin, skin_info
+	stdcall string.copy, default_dtp, dtp_name
 ;---------------------------------------------------------------------
-	mov	edi,skin_info
-	cmp	byte [edi], 0
-	jne	skin_path_ready
-	mov	esi,default_skin
-	xor	eax,eax
-	cld
-@@:
-	lodsb
-	stosb
-	test	eax,eax
-	jnz	@b
+; check app param
+	stdcall string.length, app_param
+	add eax, app_param
+	mov ecx, [eax-4]
+	or ecx, 0x20202000 ;letters to lowercase
+	cmp ecx, '.skn'
+	je  load_skin_from_param
+	cmp ecx, '.dtp'
+	je load_dtp_from_param
+	jmp no_param
+	
+load_dtp_from_param:
+	stdcall string.copy, app_param, dtp_name
+	call   load_dtp_file.1
+	jmp    skin_path_ready
+
+load_skin_from_param:
+	stdcall string.copy, app_param, skin_info
+	call    load_skin_file.2
+	jmp     skin_path_ready
+
+no_param:
+	mcall	SF_STYLE_SETTINGS,SSF_GET_COLORS,color_table,4*10	; get current colors
+	call	load_skin_file.2
+	
 skin_path_ready:	
 ;---------------------------------------------------------------------
 ;OpenDialog	initialisation
@@ -154,14 +159,11 @@ skin_path_ready:
 	push	dword PathShow_data_2
 	call	[PathShow_prepare]
 ;---------------------------------------------------------------------	
-	mcall	48,3,color_table,4*10	; get current colors
-	call	load_skin_file.2
-;---------------------------------------------------------------------	
 red:
 	call	draw_window		; at first, draw the window
 ;---------------------------------------------------------------------	
 still:
-	mcall	10	; wait here for event
+	mcall	SF_WAIT_EVENT
 
 	dec	eax	; redraw request ?
 	jz	red
@@ -175,16 +177,16 @@ still:
 	jmp	still
 ;---------------------------------------------------------------------
 key:		; key
-	mcall	2	; just read it and ignore
+	mcall	SF_GET_KEY
 	jmp	still
 ;---------------------------------------------------------------------
 button:		; button
-	mcall	17	; get id
+	mcall	SF_GET_BUTTON
 
  	cmp	ah,12	; load file
  	jne	no_load
 
-	call	load_file
+	call	load_dtp_file
 	call	draw_window
  	jmp	still
 ;--------------------------------------
@@ -199,17 +201,19 @@ no_save:
  	cmp	ah,14	; set 3d buttons
  	jne	no_3d
 
-	mcall	48,1,1
+	mcall	SF_STYLE_SETTINGS,SSF_SET_BUTTON_STYLE,1
+	invoke  ini_set_int, aIni, aSectionSkn, aButtonStyle, 1
  	jmp	doapply
 ;--------------------------------------
 no_3d:
  	cmp	ah,15	; set flat buttons
  	jne	no_flat
 
-	mcall	48, 1, 0
+	invoke  ini_set_int, aIni, aSectionSkn, aButtonStyle, 0
+	mcall	SF_STYLE_SETTINGS,SSF_SET_BUTTON_STYLE, 0
 ;--------------------------------------
 doapply:
-	mcall	48, 0, 0
+	mcall	SF_STYLE_SETTINGS,SSF_APPLY, 0
  	jmp	still
 ;--------------------------------------
 no_flat:
@@ -217,7 +221,7 @@ no_flat:
  	jne	no_apply
 ;--------------------------------------
 apply_direct:
-	mcall	48,2,color_table,10*4
+	mcall	SF_STYLE_SETTINGS,SSF_SET_COLORS,color_table,10*4
  	jmp	doapply
 ;--------------------------------------
  no_apply:
@@ -235,7 +239,7 @@ no_load_skin:
  	cmp	[skin_info],0
  	je	no_apply_skin
 
-	mcall	48,8,skin_info
+	mcall	SF_STYLE_SETTINGS,SSF_SET_SKIN,skin_info
 	call	draw_window
  	jmp	still
 ;--------------------------------------
@@ -286,7 +290,7 @@ close:
 noid1:
  	jmp	still
 ;---------------------------------------------------------------------
-load_file:
+load_dtp_file:
 ;---------------------------------------------------------------------
 ; invoke OpenDialog
 	mov	[OpenDialog_data.type],dword 0
@@ -302,6 +306,7 @@ load_file:
 
 	call	draw_PathShow
 ;---------------------------------------------------------------------
+.2:
 	xor	eax, eax
 	mov	ebx, read_info
 	mov	dword [ebx], eax	; subfunction: read
@@ -309,7 +314,7 @@ load_file:
 	mov	dword [ebx+8], eax	; offset (high dword)
 	mov	dword [ebx+12], 40     ; read colors file: 4*10 bytes
 	mov	dword [ebx+16], color_table ; address
-	mcall	70
+	mcall	SF_FILE
 	ret
 ;---------------------------------------------------------------------
 load_skin_file:
@@ -335,7 +340,7 @@ load_skin_file:
 	mov	dword [ebx+8], eax	; offset (high dword)
 	mov	dword [ebx+12], 32*1024 ; read: max 32 KBytes
 	mov	dword [ebx+16], file_load_area ; address
-	mcall	70
+	mcall	SF_FILE
 
 	mov	esi, file_load_area
 
@@ -392,33 +397,34 @@ save_file:
 	and	[ebx+8],eax			; (reserved)
 	mov	[ebx+12],dword 10*4		; bytes to write
 	mov	[ebx+16],dword color_table	; address
-	mcall	70
+	mcall	SF_FILE
 	ret
 ;---------------------------------------------------------------------
 draw_button_row:
-	mov	edx,0x60000000 + 31		; BUTTON ROW
-	mov	ebx,220*65536+14
-	mov	ecx,10*65536+14
+	mov	edx,0x40000000 + 31		; BUTTON ROW
+	mov	ebx,(area.w+18)*65536+29
+	mov	ecx,9*65536+15
 	mov	eax,8
 ;-----------------------------------
 .newb:
 	mcall
-	add	ecx,20*65536
+	add	ecx,22*65536
 	inc	edx
-	cmp	edx,0x60000000 + 40
+	cmp	edx,0x40000000 + 40
 	jbe	.newb
 	ret
 ;---------------------------------------------------------------------
 draw_button_row_of_texts:
-	mov	ebx,240*65536+13	; ROW OF TEXTS
+	mov	ebx,(area.w+49)*65536+9	; ROW OF TEXTS
 	mov	ecx,[w_work_text]
+	add ecx,0x10000000
 	mov	edx,text
 	mov	esi,32
 	mov	eax,4
 ;-----------------------------------
 .newline:
 	mcall
-	add	ebx,20
+	add	ebx,22
 	add	edx,32
 	cmp	[edx],byte 'x'
 	jne	.newline
@@ -427,7 +433,7 @@ draw_button_row_of_texts:
 draw_colours:
 	pusha
 	mov	esi,color_table
-	mov	ebx,220*65536+14
+	mov	ebx,(area.w+19)*65536+28
 	mov	ecx,10*65536+14
 	mov	eax,13
 	mov	[frame_data.draw_text_flag],dword 0
@@ -451,7 +457,7 @@ newcol:
 
 	pop	ecx ebx
 
-	add	ecx,20*65536
+	add	ecx,22*65536
 	add	esi,4
 	cmp	esi,color_table+4*9
 	jbe	newcol
@@ -461,8 +467,8 @@ newcol:
 ;----------------------------------------------------------------------
 draw_PathShow:
 	pusha
-	mcall	13,<frame_1.x+5,frame_1.width-15>,<frame_1.y+7,15>,0xffffff
-	mcall	13,<frame_2.x+5,frame_2.width-15>,<frame_2.y+7,15>,0xffffff
+	mcall	SF_DRAW_RECT,<frame_1.x+10,frame_1.w-25>,<frame_1.y+16,15>,0xffffff
+	mcall	SF_DRAW_RECT,<frame_2.x+10,frame_2.w-25>,<frame_2.y+16,15>,0xffffff
 ; draw for PathShow
 	push	dword PathShow_data_1
 	call	[PathShow_draw]
@@ -476,21 +482,21 @@ draw_PathShow:
 ;   *******  WINDOW DEFINITIONS AND DRAW ********
 ;   *********************************************
 draw_window:
-	mcall	12,1
-	mcall	48,3,app_colours,10*4
-	mcall	14
-	mcall	48,4
+	mcall	SF_REDRAW,SSF_BEGIN_DRAW
+	mcall	SF_STYLE_SETTINGS,SSF_GET_COLORS,app_colours,10*4
+	mcall	SF_GET_SCREEN_SIZE
+	mcall	SF_STYLE_SETTINGS,SSF_GET_SKIN_HEIGHT
 	mov	[current_skin_high],eax
 ; DRAW WINDOW
 	xor	eax,eax		; function 0 : define and draw window
 	xor	esi,esi
 	mov	edx,[w_work]	; color of work area RRGGBB,8->color
 	or	edx,0x34000000
-	mov	ecx,50 shl 16 + 346
+	mov	ecx,50 shl 16 + win.h
 	add	ecx,[current_skin_high]
-	mcall	,<110,440>,,,,title
+	mcall	,<110, win.w>,,,,title
 
-	mcall	9,procinfo,-1
+	mcall	SF_THREAD_INFO,procinfo,-1
 	
 	mov	eax,[procinfo+70] ;status of window
 	test	eax,100b
@@ -510,20 +516,20 @@ draw_window:
 ;-----------------------------------
 ; select color DTP frame
 ; LOAD BUTTON	; button 12
-	mcall	8,<frame_1.x+10,load_w>,<frame_1.y+25,18>,12,[w_work_button]
+	mcall	SF_DEFINE_BUTTON,<frame_1.x+10,load_w>,<frame_1.y+38,18>,12,[w_work_button]
 ; SAVE BUTTON
 	add	ebx,(load_w+2)*65536-load_w+save_w
 	inc	edx
 	mcall		; button 13
 ; APPLY BUTTON
-	mov	ebx,(frame_1.x + frame_1.width - apply_w - 15)*65536+apply_w
-	mcall	8,,,16	; button 17
+	mov	ebx,(frame_1.x + frame_1.w - apply_w - 15)*65536+apply_w
+	mcall	SF_DEFINE_BUTTON,,,16	; button 17
 ; select color DTP button text
-	mcall	4,<frame_1.x+16,frame_1.y+31>,[w_work_button_text],t1,t1.size
+	mcall	SF_DRAW_TEXT,<frame_1.x+16,frame_1.y+44>,[w_work_button_text],t1,t1.size
 ;-----------------------------------	
 ; select skin frame	
 ; LOAD SKIN BUTTON	; button 17
-	mcall	8,<frame_2.x+10,load_w>,<frame_2.y+25,18>,17,[w_work_button]
+	mcall	SF_DEFINE_BUTTON,<frame_2.x+10,load_w>,<frame_2.y+38,18>,17,[w_work_button]
 ; 3D
 	mov	ebx,(frame_2.x+155)*65536+34
 	mcall	,,,14	; button 14
@@ -532,16 +538,16 @@ draw_window:
 	inc	edx
 	mcall		; button 15
 ; APPLY SKIN BUTTON
-	mov	ebx,(frame_2.x + frame_2.width - apply_w -15)*65536+apply_w
+	mov	ebx,(frame_2.x + frame_2.w - apply_w -15)*65536+apply_w
 	mcall	,,,18		; button 18
 ; select skin button text
-	mcall	4,<frame_2.x+16,frame_2.y+31>,[w_work_button_text],t2,t2.size
+	mcall	SF_DRAW_TEXT,<frame_2.x+16,frame_2.y+44>,[w_work_button_text],t2,t2.size
 ;-----------------------------------		
 	call	draw_button_row
 	call	draw_button_row_of_texts
 	call	draw_colours
 ;-----------------------------------
-	mov	[frame_data.x],dword frame_1.x shl 16+frame_1.width
+	mov	[frame_data.x],dword frame_1.x shl 16+frame_1.w
 	mov	[frame_data.y],dword frame_1.y shl 16+frame_1.height
 	mov	[frame_data.text_pointer],dword select_dtp_text
 	mov	eax,[w_work]
@@ -553,7 +559,7 @@ draw_window:
 	push	dword frame_data
 	call	[Frame_draw]
 ;-----------------------------------
-	mov	[frame_data.x],dword frame_2.x shl 16+frame_2.width
+	mov	[frame_data.x],dword frame_2.x shl 16+frame_2.w
 	mov	[frame_data.y],dword frame_2.y shl 16+frame_2.height
 	mov	[frame_data.text_pointer],dword select_skin_text
 
@@ -567,7 +573,7 @@ draw_window:
 	call	draw_skin
 @@:
 .end:
-	mcall	12,2
+	mcall	SF_REDRAW,SSF_END_DRAW
 	ret
 ;-----------------------------------------------------------------------------
 include 'drawskin.inc'

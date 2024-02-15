@@ -3,18 +3,22 @@ use32
 	db 'MENUET01' ;идентиф. исполняемого файла всегда 8 байт
 	dd 1, start, i_end, mem, stacktop, openfile_path, sys_path
 
-include '../../../../programs/macros.inc'
-include '../../../../programs/proc32.inc'
-include '../../../../programs/KOSfuncs.inc'
-include '../../../../programs/load_img.inc'
+include '../../../macros.inc'
+include '../../../proc32.inc'
+include '../../../KOSfuncs.inc'
+include '../../../load_img.inc'
+include '../../../load_lib.mac'
 include '../trunk/vox_draw.inc'
 include '../trunk/vox_rotate.inc'
 include '../trunk/str.inc'
+include 'lang.inc'
 
-@use_library_mem mem.Alloc,mem.Free,mem.ReAlloc,dll.Load
-caption db 'Voxel mover 22.03.18',0 ;подпись окна
-
-run_file_70 FileInfoBlock
+@use_library mem.Alloc,mem.Free,mem.ReAlloc,dll.Load
+if lang eq ru
+caption db 'Перемещение вокселей 04.05.20',0 ;подпись окна
+else
+caption db 'Voxel mover 04.05.20',0
+end if
 
 IMAGE_TOOLBAR_ICON_SIZE equ 16*16*3
 image_data_toolbar dd 0
@@ -56,7 +60,7 @@ align 4
 start:
 	load_libraries l_libs_start,l_libs_end
 	;проверка на сколько удачно загузилась библиотека
-	mov	ebp,lib_2
+	mov	ebp,lib0
 	cmp	dword [ebp+ll_struc_size-4],0
 	jz	@f
 		mcall SF_TERMINATE_PROCESS
@@ -518,80 +522,98 @@ button:
 		stdcall but_new_file, [open_file_vox]
 		call draw_objects
 		call draw_pok
+		jmp still
 	@@:
 	cmp ah,4
 	jne @f
 		call but_open_file
+		jmp still
 	@@:
 	cmp ah,5
 	jne @f
 		call but_save_file
+		jmp still
 	@@:
 	cmp ah,6
 	jne @f
 		call but_zoom_p
+		jmp still
 	@@:
 	cmp ah,7
 	jne @f
 		call but_zoom_m
+		jmp still
 	@@:
 	cmp ah,8
 	jne @f
 		call but_3
+		jmp still
 	@@:
 	cmp ah,9
 	jne @f
 		call but_4
+		jmp still
 	@@:
 	cmp ah,10
 	jne @f
 		call but_plane_inc
+		jmp still
 	@@:
 	cmp ah,11
 	jne @f
 		call but_plane_dec
+		jmp still
 	@@:
 	cmp ah,12
 	jne @f
 		call but_light
+		jmp still
 	@@:
 	cmp ah,13
 	jne @f
 		call but_rend_2_2
+		jmp still
 	@@:
 	cmp ah,14
 	jne @f
 		call but_move
+		jmp still
 	@@:
 	cmp ah,15
 	jne @f
 		dec dword[mov_x]
 		call draw_pok
+		jmp still
 	@@:
 	cmp ah,16
 	jne @f
 		inc dword[mov_x]
 		call draw_pok
+		jmp still
 	@@:
 	cmp ah,17
 	jne @f
 		dec dword[mov_y]
 		call draw_pok
+		jmp still
 	@@:
 	cmp ah,18
 	jne @f
 		inc dword[mov_y]
 		call draw_pok
+		jmp still
 	@@:
 	cmp ah,19
 	jne @f
 		dec dword[mov_z]
 		call draw_pok
+		jmp still
 	@@:
 	cmp ah,20
 	jne @f
 		inc dword[mov_z]
 		call draw_pok
+		jmp still
 	@@:
 	cmp ah,1
 	jne still
@@ -633,8 +655,8 @@ moved_file_vox dd 0
 
 align 4
 but_open_file:
-pushad
 	copy_path open_dialog_name,communication_area_default_path,file_name,0
+pushad
 	mov [OpenDialog_data.type],0
 	stdcall [OpenDialog_Start],OpenDialog_data
 	cmp [OpenDialog_data.status],2
@@ -676,8 +698,8 @@ popad
 
 align 4
 but_save_file:
-	pushad
 		copy_path open_dialog_name,communication_area_default_path,file_name,0
+	pushad		
 		mov [OpenDialog_data.type],1
 		stdcall [OpenDialog_Start],OpenDialog_data
 		cmp [OpenDialog_data.status],2
@@ -1133,12 +1155,21 @@ dd 1 shl 30,1 shl 30,1 shl 30,1 shl 30,1 shl 30
 dd 1 shl 31,1 shl 30,1 shl 30,1 shl 30,1 shl 31
 rd 999 ;32*32-25
 
+if lang eq ru
 txt_zoom db 'Масштаб:',0
 txt_curor: db 'Курсор: '
 .size: rb 10
 txt_n_plane db 'Сечение:',0
 txt_color db 'Цвет:',0
 txt_mov_offs: db 'Смещение: '
+else
+txt_zoom db 'Scale:',0
+txt_curor: db 'Cursor: '
+.size: rb 10
+txt_n_plane db 'Section:',0
+txt_color db 'Color:',0
+txt_mov_offs: db 'Offset: '
+end if
 .size: rb 30
 txt_mull db '*',0
 txt_space db ' ',0
@@ -1275,14 +1306,14 @@ OpenDialog_data:
 .y_size 		dw 320 ;+52 ; Window y size
 .y_start		dw 10 ;+54 ; Window Y position
 
-default_dir db '/rd/1',0
+default_dir db '/sys',0
 
 communication_area_name:
 	db 'FFFFFFFF_open_dialog',0
 open_dialog_name:
 	db 'opendial',0
 communication_area_default_path:
-	db '/rd/1/File managers/',0
+	db '/sys/File managers/',0
 
 Filter:
 dd Filter.end - Filter ;.1
@@ -1292,39 +1323,20 @@ db 'VOX',0
 db 0
 
 
-
-head_f_i:
-head_f_l db 'Системная ошибка',0
-
 system_dir_0 db '/sys/lib/'
 lib_name_0 db 'proc_lib.obj',0
-err_message_found_lib_0 db 'Не найдена библиотека ',39,'proc_lib.obj',39,0
-err_message_import_0 db 'Ошибка при импорте библиотеки ',39,'proc_lib.obj',39,0
-
 system_dir_1 db '/sys/lib/'
 lib_name_1 db 'libimg.obj',0
-err_message_found_lib_1 db 'Не найдена библиотека ',39,'libimg.obj',39,0
-err_message_import_1 db 'Ошибка при импорте библиотеки ',39,'libimg.obj',39,0
-
 system_dir_2 db '/sys/lib/'
 lib_name_2 db 'buf2d.obj',0
-err_msg_found_lib_2 db 'Не найдена библиотека ',39,'buf2d.obj',39,0
-err_msg_import_2 db 'Ошибка при импорте библиотеки ',39,'buf2d',39,0
-
 system_dir_3 db '/sys/lib/'
 lib_name_3 db 'libini.obj',0
-err_msg_found_lib_3 db 'Не найдена библиотека ',39,'libini.obj',39,0
-err_msg_import_3 db 'Ошибка при импорте библиотеки ',39,'libini',39,0
 
 l_libs_start:
-	lib0 l_libs lib_name_0, sys_path, file_name, system_dir_0,\
-		err_message_found_lib_0, head_f_l, proclib_import,err_message_import_0, head_f_i
-	lib1 l_libs lib_name_1, sys_path, file_name, system_dir_1,\
-		err_message_found_lib_1, head_f_l, import_libimg, err_message_import_1, head_f_i
-	lib_2 l_libs lib_name_2, sys_path, library_path, system_dir_2,\
-		err_msg_found_lib_2,head_f_l,import_buf2d,err_msg_import_2,head_f_i
-	lib_3 l_libs lib_name_3, sys_path, library_path, system_dir_3,\
-		err_msg_found_lib_3,head_f_l,import_libini,err_msg_import_3,head_f_i
+	lib0 l_libs lib_name_0, file_name, system_dir_0, import_proclib
+	lib1 l_libs lib_name_1, file_name, system_dir_1, import_libimg
+	lib2 l_libs lib_name_2, file_name, system_dir_2, import_buf2d
+	lib3 l_libs lib_name_3, file_name, system_dir_3, import_libini
 l_libs_end:
 
 align 4
@@ -1375,7 +1387,7 @@ import_libimg:
 	aimg_draw    db 'img_draw',0
 
 align 4
-proclib_import: ;описание экспортируемых функций
+import_proclib:
 	OpenDialog_Init dd aOpenDialog_Init
 	OpenDialog_Start dd aOpenDialog_Start
 dd 0,0
@@ -1469,12 +1481,6 @@ dd 0,0
 	aini_get_int   db 'ini_get_int',0
 	aini_get_color db 'ini_get_color',0
 
-mouse_dd dd 0x0
-sc system_colors 
-
-align 16
-procinfo process_information 
-
 ;буфер основного изображения
 align 4
 buf_0: dd 0 ;указатель на дaные изображения
@@ -1535,14 +1541,16 @@ buf_vox:
 
 align 16
 i_end:
+	procinfo process_information
+	sc system_colors
+	run_file_70 FileInfoBlock
+	mouse_dd dd ?
 	wnd_s_pos: ;место для настроек стартовой позиции окна
 		rq 0
 	rb 4096 ;2048
 stacktop:
 	sys_path rb 1024
-	file_name:
-		rb 1024 ;4096 
-	library_path rb 1024
+	file_name rb 2048 ;4096 
 	plugin_path rb 1024 ;4096
 	openfile_path rb 1024 ;4096
 	filename_area rb 256

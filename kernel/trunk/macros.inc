@@ -1,6 +1,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                              ;;
-;; Copyright (C) KolibriOS team 2004-2015. All rights reserved. ;;
+;; Copyright (C) KolibriOS team 2004-2022. All rights reserved. ;;
 ;; Distributed under terms of the GNU General Public License    ;;
 ;;                                                              ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -22,7 +22,7 @@ macro ignore_empty_revision_keyword {
 }
 ignore_empty_revision_keyword
 
-$Revision: 7114 $
+$Revision: 9715 $
 
 
 ;// mike.dld, 2006-29-01 [
@@ -66,11 +66,14 @@ macro diff10 title,l1,l2
 include 'kglobals.inc'
 
 ; \begin{diamond}[29.09.2006]
-; may be useful for kernel debugging
+
+; @brief May be useful for kernel debugging
 ; example 1:
 ;       dbgstr 'Hello, World!'
 ; example 2:
 ;       dbgstr 'Hello, World!', save_flags
+; @param string Output string
+; @param f Put here anything if you gonna save flags
 macro dbgstr string*, f
 {
 local a

@@ -1,58 +1,81 @@
+#ifndef TAB_P
+#define TAB_P 15  //Tab padding
+#endif
 
-#define TAB_PADDING 15
 #define TAB_HEIGHT 28
+#define NAME_SIZE 64
 
 :struct _tabs
 {
-	int x,y,w,h;
+	int x,y,w;
+	int base_id;
+
 	int active_tab;
-	int c;
-	void draw_button();
+	int count;
+	dword events[10];
+	dword names[10];
+
 	int click();
-	void draw_wrapper();
+	void draw();
+	void draw_active_tab();
+	void add();
+
+	dword draw_button();
 };
 
-:void _tabs::draw_wrapper()
+:void _tabs::draw()
 {
-	dword color_light = MixColors(system.color.work, 0xFFFfff, 40);
-	dword color_content = MixColors(system.color.work, 0xFFFfff, 120);
-	dword color_light_border = MixColors(system.color.work, system.color.work_graph, 120);
+	int i, xx=x;
 
-	DrawRectangle(x-1, y-1, w+1, h+1, system.color.work_graph);
-	DrawBar(x, y, w, h, color_content); //0xF3F3F3
-	DrawRectangle3D(x, y, w-1, h-1, color_light, color_content); //0xF3F3F3
+	if (w) {
+		DrawBar(x+1,y+0+TAB_HEIGHT,w,1, sc.line);
+		DrawBar(x+1,y+1+TAB_HEIGHT,w,1, sc.light);		
+	}
 
-	DrawBar(x+1, y+h+1, w-2, 2, system.color.work_dark); //"shadow"
-
-	DrawBar(x, y+TAB_HEIGHT-1, w, 1, color_light_border);
-	DrawBar(x, y+TAB_HEIGHT, w, 1, color_light);
-
-	c = y + TAB_HEIGHT;
+	for (i=0; i<count; i++) {
+		xx += draw_button(xx + TAB_P, i, names[i]) + TAB_P;
+	}
 }
 
-:void _tabs::draw_button(dword xx, but_id, text)
+:void _tabs::draw_active_tab()
+{
+	events[active_tab]();
+}
+
+:void _tabs::add(dword text, event)
+{
+	names[count] = text;
+	events[count] = event;
+	count++;
+}
+
+:dword _tabs::draw_button(dword xx, _id, text)
 {
 	dword col_bg, col_text;
-	dword ww=strlen(text)*8, hh=TAB_HEIGHT;
+	dword ww=strlen(text)*8;
 
-	if (but_id==active_tab)
+	if (_id==active_tab)
 	{
-		col_bg=0xE44C9C;
-		col_text=0x000000;
+		col_bg = 0xE44C9C;
+		col_text = sc.work_text;
 	}
 	else
 	{
-		col_bg=0xC3A1B7;
-		col_text=0x333333;
+		col_bg = 0xC3A1B7;
+		col_text = MixColors(sc.work, sc.work_text, 120);
 	} 
-	DefineHiddenButton(xx,y, ww-1,hh-1, but_id);
-	WriteText(xx, y+6, 0x90, col_text, text);
-	DrawBar(xx, y+hh-3, ww, 3, col_bg);
+	DefineHiddenButton(xx-2,y, ww-1+4,TAB_HEIGHT-1, _id + base_id);
+	WriteTextWithBg(xx, y+6, 0xD0, col_text, text, sc.work);
+	DrawBar(xx, y+TAB_HEIGHT-3, ww, 3, col_bg);
+	return ww;
 }
 
-:int _tabs::click(int N)
+:int _tabs::click(int _id)
 {
-	if (N==active_tab) return false;
-	active_tab = N;
-	return true;
+	if (_id < base_id) || (_id > base_id + count) || (_id == active_tab) {
+		return false; 
+	}
+	active_tab = _id - base_id;
+	events[active_tab]();
+	return true;		
 }

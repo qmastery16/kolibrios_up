@@ -5,7 +5,7 @@
 ;;                                                              ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-$Revision: 6044 $
+$Revision: 9926 $
 
 
 include "skindata.inc"
@@ -97,7 +97,7 @@ parse_skin_data:
         jne     .exit
 
         mov     edi, skin_udata
-        mov     ecx, (skin_udata.end-skin_udata)/4
+        mov     ecx, (skin_udata.size)/4
         xor     eax, eax
         cld
         rep stosd
@@ -395,7 +395,7 @@ _noinside2:
         shl     eax, 4
         add     eax, edi
 
-        mov     bx, [CURRENT_TASK]
+        mov     bx, word [current_slot_idx]
         mov     [eax], bx
         mov     word [eax+2], 1     ; button id
         xor     ebx, ebx
@@ -426,7 +426,7 @@ _noinside2:
         shl     eax, 4
         add     eax, edi
 
-        mov     bx, [CURRENT_TASK]
+        mov     bx, word [current_slot_idx]
         mov     [eax], bx
         mov     word [eax+2], -1    ; button id
         xor     ebx, ebx

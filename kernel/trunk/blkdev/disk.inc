@@ -1,11 +1,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                              ;;
-;; Copyright (C) KolibriOS team 2011-2015. All rights reserved. ;;
+;; Copyright (C) KolibriOS team 2011-2021. All rights reserved. ;;
 ;; Distributed under terms of the GNU General Public License    ;;
 ;;                                                              ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-$Revision: 7546 $
+$Revision: 9941 $
 
 ; =============================================================================
 ; ================================= Constants =================================
@@ -82,7 +82,7 @@ struct  DISKFUNC
         adjust_cache_size       dd ?
 ; The pointer to the function which returns the cache size for this device.
 ; Optional, may be NULL.
-; unsigned int adjust_cache_size(unsigned int suggested_size);
+; unsigned int adjust_cache_size(void* userdata, unsigned int suggested_size);
 ; Return value: 0 = disable cache, otherwise = used cache size in bytes.
 ends
 
@@ -731,7 +731,7 @@ disk_scan_partitions:
 ; [ecx+0x40] is shorter than [ebx+0x1fe]: one-byte offset vs 4-bytes offset.
         lea     ecx, [ebx+0x1be]        ; ecx -> partition table
         cmp     word [ecx+0x40], 0xaa55
-        jnz     .mbr_failed
+        jnz     .notmbr
 ; 8. The MBR is treated differently from EBRs. For MBR we additionally need to
 ; execute step 10 and possibly step 11.
         test    ebp, ebp
@@ -1241,7 +1241,6 @@ end virtual
         add     ebp, 8       ; ebp points to part of PARTITION structure
         xor     eax, eax     ; first sector of the partition
         call    fs_read32_sys
-        push    eax
 ; 2. Run tests for all supported filesystems. If at least one test succeeded,
 ; go to 4.
 ; For tests:
@@ -1249,7 +1248,30 @@ end virtual
 ; [esp] = error code after bootsector read: 0 = ok, otherwise = failed,
 ; ebx points to the buffer for bootsector,
 ; ebx+[esi+DISK.MediaInfo.SectorSize] points to sector-sized buffer that can be used for anything.
+
+        ; lock fs list
+
+        mov     ecx, [fs_list]
+@@:
+        cmp     ecx, fs_list
+        jz      @f
+
+        push    ecx eax
+        call    dword[ecx + FileSystem.Creat_part]
+        pop     ecx
+        test    eax, eax
+        jnz     .success
+
+        mov     eax, ecx
+        pop     ecx
+        mov     ecx, [ecx]
+        jmp     @b
+@@:
+        push    eax
         call    fat_create_partition
+        test    eax, eax
+        jnz     .success
+        call    exFAT_create_partition
         test    eax, eax
         jnz     .success
         call    ntfs_create_partition
@@ -1282,14 +1304,55 @@ end virtual
         sub     ebp, 8 ; restore ebp
 ; 4. Return with eax = pointer to PARTITION or NULL.
         pop     ecx
+
+        ; unlock fs list
         ret
 
 iglobal
 align 4
 default_fs_functions:
         dd      free
-        dd      0       ; no user functions
+        dd      (default_fs_functions_end - default_fs_functions - 4) / 4
+        dd      0
+        dd      0
+        dd      0
+        dd      0
+        dd      0
+        dd      default_fs_get_file_info
+default_fs_functions_end:
 endg
+
+proc default_fs_get_file_info uses edi
+        movi    eax, ERROR_UNSUPPORTED_FS
+        cmp     byte[esi], 0
+        jnz     .done
+        movi    ecx, 40 ; len of BDFE without filename
+        cmp     [ebx+f70s5arg.xflags], 0
+        jz      @f
+        add     ecx, 2  ; volume label requested, space for utf16 terminator
+@@:
+        mov     ebx, [ebx+f70s5arg.buf]
+        stdcall is_region_userspace, ebx, ecx
+        movi    eax, ERROR_MEMORY_POINTER
+        jnz     .done
+        mov     edi, ebx
+        xor     eax, eax
+        rep stosb
+        mov     [ebx+bdfe.attr], 0x10   ; directory flag
+        mov     word[ebx+bdfe.name], 0  ; word because of possible utf16
+        mov     eax, dword[ebp+PARTITION.Length+DQ.lo]
+        mov     edx, dword[ebp+PARTITION.Length+DQ.hi]
+        mov     ecx, [ebp+PARTITION.Disk]
+        mov     ecx, [ecx+DISK.MediaInfo.SectorSize]
+        bsf     ecx, ecx
+        shld    edx, eax, cl
+        shl     eax, cl
+        mov     [ebx+bdfe.size.lo], eax
+        mov     [ebx+bdfe.size.hi], edx
+        xor     eax, eax
+.done:
+        ret
+endp
 
 ; This function is called from file_system_lfn.
 ; This handler gets the control each time when fn 70 is called
@@ -1299,6 +1362,7 @@ endg
 ;      but instead pop return address and return directly to the caller
 ;      otherwise simply return
 dyndisk_handler:
+;       DEBUGF  1, "K : FS Input Path:%s\n",esi
         push    ebx edi         ; save registers used in file_system_lfn
 ; 1. Acquire the mutex.
         mov     ecx, disk_list_mutex
@@ -1476,6 +1540,8 @@ dyndisk_handler:
         mov     ecx, [ebx]
         cmp     [edi+4], ecx
         jbe     .unsupported
+        cmp     dword[edi+8+ecx*4], 0   ; user function not implemented
+        jz      .unsupported
         pushd   edx ebp eax [edi+8+ecx*4]
         cmp     ecx, 10
         jnz     .callFS

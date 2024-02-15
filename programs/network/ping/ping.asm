@@ -1,6 +1,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                                 ;;
-;; Copyright (C) KolibriOS team 2010-2015. All rights reserved.    ;;
+;; Copyright (C) KolibriOS team 2010-2021. All rights reserved.    ;;
 ;; Distributed under terms of the GNU General Public License       ;;
 ;;                                                                 ;;
 ;;  ping.asm - ICMP echo client for KolibriOS                      ;;
@@ -14,8 +14,7 @@
 
 format binary as ""
 
-BUFFERSIZE      = 1500
-IDENTIFIER      = 0x1337
+BUFFERSIZE      = 65536
 
 use32
         org     0x0
@@ -50,14 +49,12 @@ START:
         test    eax, eax
         jnz     exit
 ; initialize console
-        push    1
-        call    [con_start]
-        push    title
-        push    250
-        push    80
-        push    25
-        push    80
-        call    [con_init]
+        invoke  con_start, 1
+        invoke  con_init, 80, 25, 80, 250, title
+; Init identifier with our PID number
+        mcall   9, thread_info, -1
+        mov     eax, [thread_info.PID]
+        mov     [icmp_packet.id], ax
 ; expand payload to 65504 bytes
         mov     edi, icmp_packet.data+32
         mov     ecx, 65504/32-1
@@ -77,17 +74,13 @@ START:
         cmp     byte[params], 0
         jne     parse_param
 
-        push    str_welcome
-        call    [con_write_asciiz]
+        invoke  con_write_asciiz, str_welcome
 main:
 ; write prompt
-        push    str_prompt
-        call    [con_write_asciiz]
+        invoke  con_write_asciiz, str_prompt
 ; read string
         mov     esi, params
-        push    1024
-        push    esi
-        call    [con_gets]
+        invoke  con_gets, esi, 1024
 ; check for exit
         test    eax, eax
         jz      exit
@@ -180,18 +173,13 @@ parse_param:
   @@:
         ; implement more parameters here
   .invalid:
-        push    str13
-        call    [con_write_asciiz]
+        invoke  con_write_asciiz, str13
         jmp     main
 
   .resolve:
 ; resolve name
         push    esp     ; reserve stack place
-        push    esp     ; fourth parameter
-        push    0       ; third parameter
-        push    0       ; second parameter
-        push    params  ; first parameter
-        call    [getaddrinfo]
+        invoke  getaddrinfo, params, 0, 0, esp
         pop     esi
 ; test for error
         test    eax, eax
@@ -201,19 +189,16 @@ parse_param:
         mov     eax, [esi+addrinfo.ai_addr]
         mov     eax, [eax+sockaddr_in.sin_addr]
         mov     [sockaddr1.ip], eax
-        push    eax
-        call    [inet_ntoa]
+        invoke  inet_ntoa, eax
 ; write result
         mov     [ip_ptr], eax
 
         push    eax
 
 ; free allocated memory
-        push    esi
-        call    [freeaddrinfo]
+        invoke  freeaddrinfo, esi
 
-        push    str4
-        call    [con_write_asciiz]
+        invoke  con_write_asciiz, str4
 
         mcall   socket, AF_INET4, SOCK_RAW, IPPROTO_ICMP
         cmp     eax, -1
@@ -235,19 +220,13 @@ parse_param:
 
         mcall   40, EVM_STACK
 
-        push    str3
-        call    [con_write_asciiz]
-
-        push    [ip_ptr]
-        call    [con_write_asciiz]
-
-        push    [size]
-        push    str3b
-        call    [con_printf]
+        invoke  con_write_asciiz, str3
+        invoke  con_write_asciiz, [ip_ptr]
+        invoke  con_printf, str3b, [size]
         add     esp, 2*4
 
 mainloop:
-        call    [con_get_flags]
+        invoke  con_get_flags
         test    eax, 0x200                      ; con window closed?
         jnz     exit_now
 
@@ -261,7 +240,13 @@ mainloop:
         cmp     eax, -1
         je      fail2
 
-        mcall   23, [timeout]
+        mov     [time_exceeded], 0
+  .receiveloop:
+        mov     ebx, [timeout]
+        sub     ebx, [time_exceeded]
+        jb      .no_response
+        mcall   23                              ; Wait for network event with timeout
+
         mcall   26, 10                          ; Get high precision timer count
         sub     eax, [time_reference]
         jz      @f
@@ -272,7 +257,7 @@ mainloop:
         jb      @f
         inc     eax
   @@:
-        mov     [time_reference], eax
+        mov     [time_exceeded], eax           ; Exceeded time in 1/100 s
 
 ; Receive reply
         mcall   recv, [socketnum], buffer_ptr, BUFFERSIZE, MSG_DONTWAIT
@@ -294,6 +279,11 @@ mainloop:
 
 ; make esi point to ICMP packet header
         add     esi, buffer_ptr
+
+; Check identifier
+        mov     ax, [icmp_packet.id]
+        cmp     [esi + ICMP_header.Identifier], ax
+        jne     .receiveloop
 
 ; we have a response, print the sender IP
         push    esi
@@ -324,10 +314,7 @@ mainloop:
 
   .echo_reply:
 
-        cmp     [esi + ICMP_header.Identifier], IDENTIFIER
-        jne     .invalid
-
-; Validate the packet
+; Validate the payload
         add     esi, sizeof.ICMP_header
         mov     ecx, [size]
         mov     edi, icmp_packet.data
@@ -336,12 +323,13 @@ mainloop:
 
 ; update stats
         inc     [stats.rx]
-        mov     eax, [time_reference]
+        mov     eax, [time_exceeded]
         add     [stats.time], eax
 
+; Print time exceeded
         movzx   eax, [buffer_ptr + IPv4_header.TimeToLive]
         push    eax
-        mov     eax, [time_reference]
+        mov     eax, [time_exceeded]
         xor     edx, edx
         mov     ebx, 10
         div     ebx
@@ -349,17 +337,14 @@ mainloop:
         push    eax
         push    [recvd]
 
-        push    str7
-        call    [con_printf]
+        invoke  con_printf, str7
         add     esp, 5*4
 
         jmp     .continue
 
 
   .ttl_exceeded:
-        push    str14
-        call    [con_write_asciiz]
-
+        invoke  con_write_asciiz, str14
         jmp     .continue
 
 
@@ -367,25 +352,30 @@ mainloop:
   .miscomp:
         sub     edi, icmp_packet.data+1
         push    edi
-        push    str9
-        call    [con_printf]
+        invoke  con_printf, str9
         add     esp, 2*4
         jmp     .continue
 
 ; Invalid reply
   .invalid:
-        push    str10
-        call    [con_write_asciiz]
+        invoke  con_write_asciiz, str13
         jmp     .continue
 
 ; Timeout!
   .no_response:
-        push    str8
-        call    [con_write_asciiz]
+        invoke  con_write_asciiz, str8
 
 ; Send more ICMP packets ?
   .continue:
         inc     [icmp_packet.seq]
+
+        invoke  con_kbhit
+        test    eax, eax
+        jz      .nokey
+        invoke  con_getch2
+        cmp     ax, 0x1E03      ; Ctrl+C
+        je      .stats
+  .nokey:
 
         cmp     [count], -1
         je      .forever
@@ -415,27 +405,23 @@ mainloop:
         push    eax
         push    [stats.rx]
         push    [stats.tx]
-        push    str12
-        call    [con_printf]
+        invoke  con_printf, str12
         add     esp, 5*4
         jmp     main
 
 ; DNS error
 fail:
-        push    str5
-        call    [con_write_asciiz]
+        invoke  con_write_asciiz, str5
         jmp     main
 
 ; Socket error
 fail2:
-        push    str6
-        call    [con_write_asciiz]
+        invoke  con_write_asciiz, str6
         jmp     main
 
 ; Finally.. exit!
 exit:
-        push    1
-        call    [con_exit]
+        invoke  con_exit, 1
 exit_now:
         mcall   -1
 
@@ -475,7 +461,7 @@ title   db      'ICMP echo (ping) client',0
 str_welcome db  'Please enter the hostname or IP-address of the host you want to ping,',10
             db  'or just press enter to exit.',10,10
             db  'Options:',10
-            db  ' -t            Send packets till users abort.',10
+            db  ' -t            Send packets till users abort. (Ctrl+C))',10
             db  ' -n number     Number of requests to send.',10
             db  ' -i TTL        Time to live.',10
             db  ' -l size       Size of echo request.',10
@@ -504,7 +490,8 @@ sockaddr1:
 .ip     dd 0
         rb 10
 
-time_reference  dd ?
+time_reference  dd ?    ; start time of sent packet
+time_exceeded   dd ?    ; time exceeded between send and receive
 ip_ptr          dd ?
 count           dd ?
 size            dd ?
@@ -537,19 +524,22 @@ import  console,        \
         con_cls,        'con_cls',\
         con_getch2,     'con_getch2',\
         con_set_cursor_pos, 'con_set_cursor_pos',\
-        con_get_flags,  'con_get_flags'
+        con_get_flags,  'con_get_flags',\
+        con_kbhit,      'con_kbhit'
 
 socketnum       dd ?
 
 icmp_packet     db ICMP_ECHO    ; type
                 db 0            ; code
                 dw 0            ; checksum
- .id            dw IDENTIFIER   ; identifier
+ .id            dw 0            ; identifier
  .seq           dw 0x0000       ; sequence number
  .data          db 'abcdefghijklmnopqrstuvwxyz012345'
 
 I_END:
                 rb 65504-32
+
+thread_info process_information
 
 params          rb 1024
 buffer_ptr:     rb BUFFERSIZE

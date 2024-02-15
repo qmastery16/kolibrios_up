@@ -4264,6 +4264,9 @@ int ifdefconst()
 		if(comfile==file_meos&&strcmp((char *)string+2,"MEOS__")==0)return TRUE;
 
 		if((sobj||fobj)&&strcmp((char *)string+2,"OBJ__")==0)return TRUE;
+		
+		// Added by Coldy (for mark MSCOFF build)
+		if ((ocoff&&sobj) && strcmp((char *)string + 2, "COFF__") == 0)return TRUE;
 
 		if(comfile==file_exe){
 
@@ -4841,7 +4844,11 @@ int cmpresult,ocmpresult=0;
 
 	if(ptr!=NULL){	//найден объект удаления
 
-		if(ptr->newid)free(ptr->newid);	//удалить доп информ.
+		if(ptr->newid){
+			free(ptr->newid);	//удалить доп информ.
+			// Fixed by Coldy, thx turbocat (double free error)
+			ptr->newid = NULL;
+		}
 
 		leftptr=ptr->left;	//дите
 

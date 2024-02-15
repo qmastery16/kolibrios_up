@@ -1,11 +1,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                              ;;
-;; Copyright (C) KolibriOS team 2004-2017. All rights reserved. ;;
+;; Copyright (C) KolibriOS team 2004-2024. All rights reserved. ;;
 ;; Distributed under terms of the GNU General Public License    ;;
 ;;                                                              ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-$Revision: 7522 $
+$Revision: 9968 $
 
 
 dpl0    =  10010000b      ; data read       dpl0
@@ -17,6 +17,11 @@ cpl3    =  11111010b      ; code read dpl3
 D32     =  01000000b      ; 32bit segment
 G32     =  10000000b      ; page gran
 
+;;;;;;;;;;; task manager errors ;;;;;;;;;;
+
+TASKMAN_ERROR_OUT_OF_MEMORY      = 30 ; 0x1E
+TASKMAN_ERROR_NOT_A_EXECUTABLE   = 31 ; 0x1F
+TASKMAN_ERROR_TOO_MANY_PROCESSES = 32 ; 0x20
 
 ;;;;;;;;;;;;cpu_caps flags;;;;;;;;;;;;;;;;
 
@@ -213,23 +218,27 @@ struct  TSS
         _io_map_1   rb 4096
 ends
 
+struct kernel_header
+        jump       rb 3  ; jmp start_of_code
+        signature  rb 10 ; 'KolibriOS '
+        version    rb 19 ; ASCII string
+        b32_offset dd ?  ; offset of the 32-bit entry point in kernel binary
+
+; uefi4kos adds the kernel's load address to the offset above and jumps directly
+; to 32-bit entry point, skipping the real mode code part. This way the same
+; KERNEL.MNT file can be booted on BIOS as well as on UEFI.
+ends
+
 DRIVE_DATA_SIZE     = 16
 
 OS_BASE             = 0x80000000
 
 window_data         = OS_BASE + 0x0001000
-
-CURRENT_TASK        = OS_BASE + 0x0003000
-TASK_COUNT          = OS_BASE + 0x0003004
-TASK_BASE           = OS_BASE + 0x0003010
-TASK_DATA           = OS_BASE + 0x0003020
-TASK_EVENT          = OS_BASE + 0x0003020
-
-CDDataBuf           = OS_BASE + 0x0005000
-
-;unused                 0x6000 - 0x8fff
+background_window   = window_data + sizeof.WDATA
 
 BOOT_VARS           = 0x9000
+KERNEL_BASE         = 0x10000
+RAMDISK_BASE        = 0x100000
 
 idts                = OS_BASE + 0x000B100
 WIN_STACK           = OS_BASE + 0x000C000
@@ -248,18 +257,15 @@ BTN_ADDR            = OS_BASE + 0x000FE88
 MEM_AMOUNT          = OS_BASE + 0x000FE8C
 
 SYS_SHUTDOWN        = OS_BASE + 0x000FF00
-TASK_ACTIVATE       = OS_BASE + 0x000FF01
 
 
-TMP_STACK_TOP       = 0x006CC00
+TMP_STACK_TOP       = 0x008CC00
 
-sys_proc            = OS_BASE + 0x006F000
+sys_proc            = OS_BASE + 0x008E000
 
-SLOT_BASE           = OS_BASE + 0x0080000
+SLOT_BASE           = OS_BASE + 0x0090000
 
 VGABasePtr          = OS_BASE + 0x00A0000
-
-UPPER_KERNEL_PAGES  = OS_BASE + 0x0400000
 
 virtual at            OS_BASE + 0x05FFF80
   tss  TSS
@@ -275,12 +281,7 @@ master_tab          = page_tabs + (page_tabs shr 10) ;0xFDFF70000
 
 LFB_BASE            = 0xFE000000
 
-
-new_app_base        = 0;
-
-twdw                = 0x2000   ; CURRENT_TASK - window_data
-
-std_application_base_address   = new_app_base
+std_application_base_address   = 0
 RING0_STACK_SIZE    = 0x2000
 
 REG_SS              = RING0_STACK_SIZE -  4
@@ -338,11 +339,6 @@ PAT_VALUE           = 0x00070106; (UC<<24)|(UCM<<16)|(WC<<8)|WB
 
 MAX_MEMMAP_BLOCKS   = 32
 
-TMP_FILE_NAME       =     0
-TMP_CMD_LINE        =  1024
-TMP_ICON_OFFS       =  1280
-
-
 EVENT_REDRAW       = 0x00000001
 EVENT_KEY          = 0x00000002
 EVENT_BUTTON       = 0x00000004
@@ -353,6 +349,9 @@ EVENT_NETWORK      = 0x00000080
 EVENT_DEBUG        = 0x00000100
 EVENT_NETWORK2     = 0x00000200
 EVENT_EXTENDED     = 0x00000400
+
+EVM_MOUSE_FILTER  = 0x80000000  ; see in macros.inc for apps
+EVM_CURSOR_FILTER = 0x40000000
 
 EV_INTR            = 1
 
@@ -367,15 +366,15 @@ SYSTEM_RESTART     = 4
 BLIT_CLIENT_RELATIVE = 0x20000000
 
 struct SYSCALL_STACK
-        _eip            dd ?
-        _edi            dd ?    ;  +4
-        _esi            dd ?    ;  +8
-        _ebp            dd ?    ; +12
-        _esp            dd ?    ; +16
-        _ebx            dd ?    ; +20
-        _edx            dd ?    ; +24
-        _ecx            dd ?    ; +28
-        _eax            dd ?    ; +32
+        eip     dd ?    ;  +0
+        edi     dd ?    ;  +4
+        esi     dd ?    ;  +8
+        ebp     dd ?    ; +12
+        esp     dd ?    ; +16
+        ebx     dd ?    ; +20
+        edx     dd ?    ; +24
+        ecx     dd ?    ; +28
+        eax     dd ?    ; +32
 ends
 
 struct  LHEAD
@@ -486,6 +485,22 @@ struct  BOX
         height  dd ?
 ends
 
+struct process_information
+        cpu_usage             dd ?  ; +0
+        window_stack_position dw ?  ; +4
+        window_stack_value    dw ?  ; +6
+                              dw ?  ; +8
+        process_name          rb 12 ; +10
+        memory_start          dd ?  ; +22
+        used_memory           dd ?  ; +26
+        PID                   dd ?  ; +30
+        box                   BOX   ; +34
+        slot_state            dw ?  ; +50
+                              dw ?  ; +52
+        client_box            BOX   ; +54
+        wnd_state             db ?  ; +70
+ends
+
 struct  APPDATA
         app_name        rb 11
                         rb 5
@@ -496,7 +511,7 @@ struct  APPDATA
         exc_handler     dd ?            ;+32
         except_mask     dd ?            ;+36
         pl0_stack       dd ?            ;+40
-        cursor          dd ?            ;+44
+                        dd ?            ;+44
         fd_ev           dd ?            ;+48
         bk_ev           dd ?            ;+52
         fd_obj          dd ?            ;+56
@@ -504,58 +519,50 @@ struct  APPDATA
         saved_esp       dd ?            ;+64
         io_map          rd 2            ;+68
         dbg_state       dd ?            ;+76
-        cur_dir         dd ?            ;+80
+        cur_dir         dd ?            ;+80   ; directory this thread
         wait_timeout    dd ?            ;+84
         saved_esp0      dd ?            ;+88
         wait_begin      dd ?            ;+92   +++
         wait_test       dd ?            ;+96   +++
         wait_param      dd ?            ;+100  +++
         tls_base        dd ?            ;+104
-                        dd ?            ;+108
-        event_filter    dd ?            ;+112
-        draw_bgr_x      dd ?            ;+116
-        draw_bgr_y      dd ?            ;+120
-                        dd ?            ;+124
-        wnd_shape       dd ?            ;+128
-        wnd_shape_scale dd ?            ;+132
+        event_mask      dd ?            ;+108   stores event types allowed for task
+        tid             dd ?            ;+112   thread id
+                        dd ?            ;+116
+                        dd ?            ;+120
+        state           db ?            ;+124   thread state
+        wnd_number      db ?            ;+125
+                        dw ?            ;+126
+        window          dd ?            ;+128   ptr WDATA
+                        dd ?            ;+132
                         dd ?            ;+136
-                        dd ?            ;+140
-        saved_box       BOX             ;+144
+        counter_sum     dd ?            ;+140
+                        rd 4            ;+144
         ipc_start       dd ?            ;+160
         ipc_size        dd ?            ;+164
-        event_mask      dd ?            ;+168
-        debugger_slot   dd ?            ;+172
+        occurred_events dd ?            ;+168  ; mask which accumulates occurred events
+        debugger_slot   dd ?            ;+172  ; index in SLOT_BASE array
         terminate_protection dd ?       ;+176
         keyboard_mode   db ?            ;+180
-        captionEncoding db ?
-                        rb 2
+                        rb 3
         exec_params     dd ?            ;+184
         dbg_event_mem   dd ?            ;+188
         dbg_regs        DBG_REGS        ;+192
-        wnd_caption     dd ?            ;+212
-        wnd_clientbox   BOX             ;+216
+                        dd ?            ;+212
+                        rd 4            ;+216
         priority        dd ?            ;+232
         in_schedule     LHEAD           ;+236
+        counter_add     dd ?            ;+244
+        cpu_usage       dd ?            ;+248
+                        dd ?            ;+252  ; temporary place to save cursor
 ends
+
+assert sizeof.APPDATA = 256
 
 APP_OBJ_OFFSET  = 48
 APP_EV_OFFSET   = 40
 
-struct  TASKDATA
-        event_mask      dd ?
-        pid             dd ?
-                        dw ?
-        state           db ?
-                        db ?
-                        dw ?
-        wnd_number      db ?
-                        db ?
-        mem_start       dd ?
-        counter_sum     dd ?
-        counter_add     dd ?
-        cpu_usage       dd ?
-ends
-
+; Thread states:
 TSTATE_RUNNING        = 0
 TSTATE_RUN_SUSPENDED  = 1
 TSTATE_WAIT_SUSPENDED = 2
@@ -564,12 +571,14 @@ TSTATE_TERMINATING    = 4
 TSTATE_WAITING        = 5
 TSTATE_FREE           = 9
 
-; constants definition
+; Window constants:
 WSTATE_NORMAL    = 00000000b
 WSTATE_MAXIMIZED = 00000001b
 WSTATE_MINIMIZED = 00000010b
 WSTATE_ROLLEDUP  = 00000100b
+WSTATE_USED      = 10000000b
 
+; fl_redraw
 WSTATE_REDRAW    = 00000001b
 WSTATE_WNDDRAWN  = 00000010b
 
@@ -580,7 +589,8 @@ ZPOS_DESKTOP            = -2
 ZPOS_ALWAYS_BACK        = -1
 ZPOS_NORMAL             = 0
 ZPOS_ALWAYS_TOP         = 1     ;ZPOS_ALWAYS_TOP is always last and has max number!
-; structures definition
+
+; Window structure:
 struct  WDATA
         box             BOX
         cl_workarea     dd ?
@@ -590,10 +600,25 @@ struct  WDATA
         fl_wstate       db ?
         fl_wdrawn       db ?
         fl_redraw       db ?
+        clientbox       BOX
+        shape           dd ?
+        shape_scale     dd ?
+        caption         dd ?
+        captionEncoding db ?
+                        rb 3
+        saved_box       BOX
+        cursor          dd ?
+        temp_cursor     dd ?
+        draw_bgr_x      dd ?
+        draw_bgr_y      dd ?
+        draw_data       RECT
+        thread          dd ? ; ptr APPDATA
+                        rb 12
 ends
 
 label WDATA.fl_wstyle byte at WDATA.cl_workarea + 3
 
+assert sizeof.WDATA = 128
 
 struct  SYS_VARS
         bpp             dd ?
@@ -673,14 +698,33 @@ struct  HDLL
 ends
 
 struct DQ
-        lo dd ?
-        hi dd ?
+        union
+                lo    dd ?
+                hi_be dd ?      ; big endian
+        ends
+        union
+                hi    dd ?
+                lo_be dd ?
+        ends
 ends
 
 struct e820entry
         addr DQ ?
         size DQ ?
         type dd ?
+ends
+
+RD_LOAD_FROM_FLOPPY = 1
+RD_LOAD_FROM_HD     = 2
+RD_LOAD_FROM_MEMORY = 3
+RD_LOAD_FROM_FORMAT = 4
+RD_LOAD_FROM_NONE   = 5
+
+struct boot_pci_data
+        access_mechanism db ?
+        last_bus         db ?
+        version          dw ?   ; bcd minor, then major
+        pm_entry         dd ?   ; physical address of protected-mode entry point
 ends
 
 struct  boot_data
@@ -696,10 +740,11 @@ struct  boot_data
         bank_switch     dd ?    ; Vesa 1.2 pm bank switch
         lfb             dd ?    ; Vesa 2.0 LFB address
         mtrr            db ?    ; 0 or 1: enable MTRR graphics acceleration
-        launcher_start  db ?    ; 0 or 1: start the first app (right now it's LAUNCHER) after kernel is loaded
+        launcher_start  db ?    ; 0 or 1: start the first app (right now it's
+                                ; LAUNCHER) after kernel is loaded
         debug_print     db ?    ; if nonzero, duplicates debug output to the screen
         dma             db ?    ; DMA write: 1=yes, 2=no
-        pci_data        rb 8
+        pci_data        boot_pci_data
                         rb 8
         shutdown_type   db ?    ; see sysfn 18.9
                         rb 15
@@ -710,15 +755,14 @@ struct  boot_data
         apm_code_32     dw ?
         apm_code_16     dw ?
         apm_data_16     dw ?
-        dev             db ?
+        rd_load_from    db ?    ; Device to load ramdisk from, RD_LOAD_FROM_*
                         db ?
         kernel_restart  dw ?
-        bx_from_load    dw ?
-        ; low byte: a,b,c,d -- hdX, r -- rdX
-        ; high byte: symbol 'X' as in the line above, e.g. '1', not 1
-        ; see loader_doc.txt for details
+        sys_disk        dw ?    ; Device to mount on /sys/, see loader_doc.txt for details
         acpi_rsdp       dd ?
-                        rb 0x1f
+        syspath         rb 0x17
+        devicesdat_data dd ?
+        devicesdat_size dd ?
         bios_hd_cnt     db ?    ; number of BIOS hard disks
         bios_hd         rb 0x80 ; BIOS hard disks
         memmap_block_cnt dd ?   ; available physical memory map: number of blocks
@@ -772,6 +816,15 @@ struct  display_t
         check_m_pixel   dd ?
 
         bytes_per_pixel dd ?
+
+        put_pixel       dd ?
+        put_rect        dd ?
+        put_image       dd ?
+        put_line        dd ?
+        get_pixel       dd ?
+        get_rect        dd ?
+        get_image       dd ?
+        get_line        dd ?
 ends
 
 struct  DISPMODE

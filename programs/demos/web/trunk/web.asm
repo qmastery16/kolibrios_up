@@ -8,6 +8,11 @@
 ;   2) Screen width bigger than height
 ;   3) Screen width and height are even (2*k)
 
+use32
+    org 0
+    db  'MENUET01'
+    dd  0x01,__start,__end,__memory,__stack,param,0
+
 include '../../../macros.inc'
 
 background_cl = 0x000000
@@ -17,9 +22,25 @@ delay = 4
 
 ; debug = 1
 
-MEOS_APP_START
+;KOS_APP_START
 
 CODE
+	;Check if the app is running in screensaver mode or not
+	cmp dword [param], '@ss'
+	setz [screensaver]
+    mov     ebx, EVM_REDRAW + EVM_KEY + EVM_BUTTON
+    cmovz   ebx, EVM_REDRAW + EVM_KEY + EVM_BUTTON + EVM_MOUSE
+    mcall   40
+	
+	;Make cursor transparent
+    mov     edi, transparent_cursor
+    xor     eax, eax
+    mov     ecx, 32*32
+    rep     stosd
+    mcall   37, 4, transparent_cursor, 2
+    mov     ecx, eax
+    mcall   37, 5
+	
     ;Preinit. Randomize start counter
     mcall 3
     mov     [initial_counter], eax          ;init with system time
@@ -44,7 +65,7 @@ CODE
     mcall   68, 11      ; Init heap
     test    eax, eax    ; Is heap successfully inited?
     jnz     @f
-    mcall   -1          ;   Netu pamjati?! Nu i nahuj vas
+    jmp     exit          ;   Netu pamjati?! Nu i nahuj vas
 @@:
     movzx   ecx, [y_max]
     inc     ecx
@@ -54,7 +75,7 @@ CODE
     mcall   68, 12,
     test    eax, eax    ; Did we get something non zero?
     jnz     @f
-    mcall   -1
+    jmp     exit
 @@:
     mov     [line_coords_array_pointer], eax
     add     eax, edx
@@ -358,6 +379,10 @@ wait_event:
 ; button pressed; we have only one button, close
 ; also seems to handle Alt+F4
 exit:
+    cmp     [screensaver], 0
+    jz      @f
+    mcall   70, f70
+@@:
     mcall   -1
 
 
@@ -417,5 +442,15 @@ line_coords_array_pointer       dd ?
     end_y_offset = 6
     line_start_pointer_offset = 8
     line_coords_element_size = 12
+
+__params:
+param rb 40
+
+f70: ; run
+    dd 7, 0, 0, 0, 0
+    db '/sys/@SS',0
+
+screensaver db ?
+transparent_cursor rd 32*32
 
 MEOS_APP_END

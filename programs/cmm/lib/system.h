@@ -5,16 +5,16 @@
 dword
 	nonset1,
 	taskbar_color,
-	work_dark,
-	work_light,
+	dark,
+	light,
 	window_title,
 	work,
-	work_button,
-	work_button_text,
+	button,
+	button_text,
 	work_text,
-	work_graph;
+	line;
 	void get();
-};
+} sc;
 
 :void COLORS::get()
 {
@@ -24,10 +24,5 @@ dword
 	EDX = 40;
 	$int 0x40
 }
-
-:struct SYSTEM
-{
-	COLORS color;
-} system;
 
 #endif

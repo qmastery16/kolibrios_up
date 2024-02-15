@@ -1,7 +1,7 @@
 @^ fix macro comment {
 ^@ fix }
 
-; -------------------------
+; --------------------------
 macro library [lname,fname]
 {
   forward
@@ -110,6 +110,7 @@ macro meos_app_start
   dd 0x0
  }
 MEOS_APP_START fix meos_app_start
+KOS_APP_START fix meos_app_start
 
 macro code
  {
@@ -147,6 +148,7 @@ macro meos_app_end
   __memory:
  }
 MEOS_APP_END fix meos_app_end
+KOS_APP_END fix meos_app_end
 
 
 ; macro for defining multiline text data
@@ -182,7 +184,7 @@ struc mls [sstring]
 
 
 ; strings
-macro sz name,[data] {       ; from MFAR [mike.dld]
+macro sz name,[data] {       ; [mike.dld]
  common
   if used name
    name db data
@@ -199,7 +201,7 @@ macro szZ name,[data] {      ; same as sz, but for zero terminated string [dunka
 }
 sz0 fix szZ
 
-macro lsz name,[lng,data] {  ; from MFAR [mike.dld]
+macro lsz name,[lng,data] {  ; [mike.dld]
  common
   if used name
    label name
@@ -212,7 +214,7 @@ macro lsz name,[lng,data] {  ; from MFAR [mike.dld]
   end if
 }
 
-macro szc name,elsz,[data] {         ; from MFAR [mike.dld]
+macro szc name,elsz,[data] {     ; [mike.dld]
  common
   local s,m
   m = 0
@@ -234,7 +236,7 @@ macro szc name,elsz,[data] {         ; from MFAR [mike.dld]
   end if
 }
 
-macro lszc name,elsz,[lng,data] {  ; from MFAR [mike.dld]
+macro lszc name,elsz,[lng,data] {  ; [mike.dld]
  common
   local s,m,c
   m = 0
@@ -288,11 +290,11 @@ macro __mov reg,a,b {       ; mike.dld
 }
 
 
-include 'config.inc'
-;__CPU_type equ p5
+;include 'config.inc'
+__CPU_type equ p5
 SYSENTER_VAR    equ 0
 
-macro mcall a,b,c,d,e,f {   ; mike.dld, updated by Ghost for Fast System Calls
+macro mcall a,b,c,d,e,f,g {   ; [mike.dld], [Ghost]
  local  ..ret_point
  __mov eax,a
  __mov ebx,b
@@ -300,6 +302,7 @@ macro mcall a,b,c,d,e,f {   ; mike.dld, updated by Ghost for Fast System Calls
  __mov edx,d
  __mov esi,e
  __mov edi,f
+ __mov ebp,g
 
  if __CPU_type eq p5
         int     0x40
@@ -462,14 +465,16 @@ struct process_information
                           dw ?  ; +52
   client_box              BOX   ; +54
   wnd_state               db ?  ; +70
-  rb (1024-71)
+  event_mask              dd ?  ; +71
+  keyboard_mode           db ?  ; +75
+  rb (1024-76)
 ends
 
 struct system_colors
   frame            dd ? ;nonset1
   grab             dd ? ;nonset2
-  work_3d_dark     dd ?
-  work_3d_light    dd ?
+  work_dark        dd ?
+  work_light       dd ?
   grab_text        dd ? ;window_title
   work             dd ?
   work_button      dd ?
@@ -566,6 +571,11 @@ irp cond, e, ne, g, ng, l, nl, ge, le {
 
 ; constants
 
+; button flags
+BT_DEL         = 0x80000000
+BT_HIDE        = 0x40000000
+BT_NOFRAME     = 0x20000000
+
 ; events
 EV_IDLE        = 0
 EV_TIMER       = 0
@@ -590,5 +600,5 @@ EVM_STACK      =   10000000b
 EVM_DEBUG      =  100000000b
 EVM_STACK2     = 1000000000b
 
-EVM_MOUSE_FILTER = 0x80000000
+EVM_MOUSE_FILTER  = 0x80000000
 EVM_CURSOR_FILTER = 0x40000000

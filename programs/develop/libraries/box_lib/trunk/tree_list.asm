@@ -1,6 +1,6 @@
 ; элемент TreeList для библиотеки box_lib.obj
 ; на код применена GPL2 лицензия
-; последняя модификация 12.09.2017 IgorA
+; последняя модификация 12.01.2021 IgorA
 
 
 struct TreeNode
@@ -240,7 +240,16 @@ push eax ebx
 ;------------------------------------------------
 .mouse_next:
 
-		mcall SF_MOUSE_GET,SSF_BUTTON
+		mcall SF_MOUSE_GET,SSF_BUTTON_EXT
+		test eax,$01000000
+		jz @f
+		cmp tl_on_press,0
+		je @f
+		call tl_on_press
+		add esp,8
+		popad
+		ret
+@@:	
 		bt eax,0 ;left mouse button press
 pop ebx eax
 		jae .no_draw
@@ -284,9 +293,8 @@ pop ebx eax
 			add esi,tl_box_height ;esi = coord bottom border
 			call tl_draw_null_cursor ;стираем курсор
 		pop esi
-		@@:
-
 		mov tl_cur_pos,eax
+		@@:
 
 		; if '+' or '-' press
 		call tl_get_cur_node_index ;eax = node index
@@ -294,16 +302,14 @@ pop ebx eax
 		jl .no_open_close ;курсор стоит на пустом месте, без узлов
 		imul eax,sizeof.TreeNode
 		add eax,tl_data_nodes
-		xor bx,bx
-		mov bl,byte[eax+TreeNode.level] ;сохраняем уровень текущего узла
+		movzx bx,byte[eax+TreeNode.level] ;сохраняем уровень текущего узла
 		inc bx ;+ поле для курсора
 
 		cmp si,tl_img_cx
 		jl .no_open_close ;мышей попали на левое поле для курсора, где точно нет '+' и '-'
 			mov eax,esi
 			xor edx,edx
-			xor ecx,ecx
-			mov cx,tl_img_cx
+			movzx ecx,tl_img_cx
 			div ecx
 
 			cmp ax,bx
@@ -1403,14 +1409,14 @@ endp
 align 4
 proc tl_node_poi_get_info uses ebx ecx edx edi, tlist:dword, node_ind:dword
 	mov edi,[tlist]
-	mov ebx,dword[node_ind]
+	mov ebx,[node_ind]
+	inc ebx
 
 	;cycle to nodes
 	mov edx,tl_data_nodes
-	mov ecx,edx
-	add ecx,sizeof.TreeNode
+	lea ecx,[edx+sizeof.TreeNode]
 	@@:
-		call tl_iterat_next_all
+		call tl_iterat_next
 		cmp edx,ecx
 		jle @f
 		dec ebx

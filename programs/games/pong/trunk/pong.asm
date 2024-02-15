@@ -20,15 +20,17 @@ CK_UP2 equ 72
 CK_DOWN2 equ 80
 
 use32
-
                 org     0x0
 
-                db      'MENUET00'              ; 8 byte id
-                dd      38                      ; required os
-                dd      START                   ; program start
-                dd      I_END                   ; program image size
-                dd      0x2000                  ; required amount of memory
-                dd      0x00000000              ; reserved=no extended header
+                db     'MENUET01'
+                dd     1                         ; version
+                dd     START                     ; program start
+                dd     I_END                     ; program image size
+                dd     MEM                       ; size memory for program
+                dd     STACKTOP                  ; pointer on stack
+                dd     0
+                dd     0
+
 
 include '../../../macros.inc'
 
@@ -36,7 +38,7 @@ START:
 
     mov  eax, 66
     mov  ebx, 1
-    mov  ecx, 1
+    mov  ecx, ebx
     mcall               ; установить режим сканкодов
 
     call draw_window
@@ -468,3 +470,6 @@ paddle:
 file "paddle.raw"
 
 I_END:
+        rb 256
+STACKTOP:
+MEM:

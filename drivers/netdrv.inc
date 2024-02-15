@@ -1,6 +1,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                                 ;;
-;; Copyright (C) KolibriOS team 2004-2015. All rights reserved.    ;;
+;; Copyright (C) KolibriOS team 2004-2021. All rights reserved.    ;;
 ;; Distributed under terms of the GNU General Public License       ;;
 ;;                                                                 ;;
 ;;          GNU GENERAL PUBLIC LICENSE                             ;;
@@ -33,12 +33,15 @@ include 'mii.inc'
 
 ; Link state
 
-        ETH_LINK_DOWN   = 0             ; Link is down
-        ETH_LINK_UNKNOWN= 1b            ; There could be an active link
-        ETH_LINK_FD     = 10b           ; full duplex flag
-        ETH_LINK_10M    = 100b          ; 10 mbit
-        ETH_LINK_100M   = 1000b         ; 100 mbit
-        ETH_LINK_1G     = 1100b         ; gigabit
+        ETH_LINK_DOWN           = 0             ; Link is down
+        ETH_LINK_UNKNOWN        = 1b            ; There could be an active link
+        ETH_LINK_FULL_DUPLEX    = 10b           ; full duplex flag
+
+        ETH_LINK_SPEED_10M      = 100b          ; 10 Mbit
+        ETH_LINK_SPEED_100M     = 1000b         ; 100 Mbit
+        ETH_LINK_SPEED_1G       = 1100b         ; Gigabit
+
+        ETH_LINK_SPEED_MASK     = 1100b
 
 ; Macro to easily set i/o addresses to access device.
 ; In the beginning of a procedure (or ofter edx may have been destroyed),
@@ -111,13 +114,21 @@ struct  NET_DEVICE
         reset           dd ?    ;
         transmit        dd ?    ;
 
+        state           dd ?    ; link state (0 = no link)
+        hwacc           dd ?    ; bitmask stating enabled HW accelerations (offload engines)
+
         bytes_tx        dq ?    ; Statistics, updated by the driver
         bytes_rx        dq ?    ;
-        packets_tx      dd ?    ;
-        packets_rx      dd ?    ;
 
-        state           dd ?    ; link state (0 = no link)
-        hwacc           dd ?    ; bitmask stating enabled HW accelerations
+        packets_tx      dd ?    ;
+        packets_tx_err  dd ?    ; CRC errors, too long or too short frames
+        packets_tx_drop dd ?    ;
+        packets_tx_ovr  dd ?    ; FIFO overrun
+
+        packets_rx      dd ?    ;
+        packets_rx_err  dd ?    ; CRC errors, too long or too short frames
+        packets_rx_drop dd ?    ;
+        packets_rx_ovr  dd ?    ; FIFO overrun
 
 ends
 

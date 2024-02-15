@@ -1,139 +1,127 @@
-//pay attension: >200 this is only file actions, not supported by folders
 #ifdef LANG_RUS
-char *file_captions[] = {
-	"Открыть",               "Enter",100,
-	"Открыть с помощью...",  "CrlEnt",201,
-	"Открыть как текст",     "F3",202,
-	"Открыть как HEX",       "F4",203,
-	"Копировать",            "Crl+C",104,
-	"Вырезать",              "Crl+X",105,
-	"Вставить",              "Crl+V",106,
-	"Переименовать",         "F2",207,
-	"Удалить",               "Del",108,
-	"Обновить папку",        "F5",109,
-	"Свойства",             "F8",110,
-	0, 0, 0};
+
+char file_actions[]= 
+"Открыть           |Enter
+Открыть с помощью  |CrlEnt
+-
+Копировать         |Crl+C
+Вырезать           |Crl+X
+Вставить           |Crl+V
+-
+Переименовать      |F2
+Удалить            |Del
+Свойства           |F1";
+char empty_folder_actions[]=
+"Вставить      |Crl+V";
+char burger_menu_items[] = 
+"Новое окно|Ctrl+N
+Открыть консоль|Ctrl+G
+Обновить папку|Ctrl+R
+Настройки|F10
+О программе";
+
 #elif LANG_EST
-char *file_captions[] = {
-	"Ava",            "Enter",100,
-	"Ava ...",        "CrlEnt",201,
-	"Vaata tekstina", "F3",202,
-	"Vaata HEX",      "F4",203,
-	"Kopeeri",        "Crl+C",104,
-	"Lїika",          "Crl+X",105,
-	"Aseta",          "Crl+V",106,
-	"Nimeta №mber",   "F2",207,
-	"Kustuta",        "Del",108,
-	"Vфrskenda",      "F5",109,
-	"Properties",     "F8",110,
-	0, 0, 0};
+char file_actions[]= 
+"Ava           |Enter
+Ava ...        |CrlEnt
+-
+Kopeeri        |Crl+C
+Lїika          |Crl+X
+Aseta          |Crl+V
+-
+Nimeta №mber   |F2
+Kustuta        |Del
+Properties     |F1";
+char empty_folder_actions[]=
+"Aseta         |Crl+V";
+char burger_menu_items[] = 
+"New window|Ctrl+N
+Open console here|Ctrl+G
+Vфrskenda|Ctrl+R
+Settings|F10
+About";
+
 #else
-char *file_captions[] = {
-	"Open",          "Enter",100,
-	"Open with...",  "CrlEnt",201,
-	"View as text",  "F3",202,
-	"View as HEX",   "F4",203,
-	"Copy",          "Crl+C",104,
-	"Cut",           "Crl+X",105,
-	"Paste",         "Crl+V",106,
-	"Rename",        "F2",207,
-	"Delete",        "Del",108,
-	"Refresh",       "F5",109,
-	"Properties",    "F8",110,
-	0, 0, 0};
+char file_actions[]= 
+"Open         |Enter 
+Open with...  |CrlEnt
+-
+Copy          |Crl+C
+Cut           |Crl+X
+Paste         |Crl+V
+-
+Rename        |F2
+Delete        |Del
+Properties    |F1";
+char empty_folder_actions[]=
+"Paste        |Crl+V";
+char burger_menu_items[] = 
+"New window|Ctrl+N
+Open console here|Ctrl+G
+Refresh folder|Ctrl+R
+Settings|F10
+About";
 #endif
 
-llist rbmenu;
-int cur_action_buf;
 
-void FileMenu()
+enum { MENU_FILE=1, MENU_NO_FILE, MENU_BURGER };
+
+bool active_menu = false;
+
+void EventMenuClick(dword _id)
 {
-	proc_info MenuForm;
-	int index;
-
-	rbmenu.ClearList();
-	rbmenu.SetFont(6, 9, 0x80);
-	rbmenu.SetSizes(0,0,10,0,18);
-	for (index=0; file_captions[index]!=0; index+=3)
-	{
-		if (selected_count > 0) {
-			//if there are files selected then show only specific menu items
-			if (file_captions[index+2]>=200) continue;
-			if (file_captions[index+2]==100) continue;
-		}
-		else if (itdir) && (file_captions[index+2]>=200) continue;
-		if (strlen(file_captions[index])>rbmenu.w) rbmenu.w = strlen(file_captions[index]);
-		rbmenu.count++;
-		rbmenu.visible++;
+	if (active_menu == MENU_NO_FILE) switch(_id) {
+		case 1: EventPaste(path); break;
 	}
-	rbmenu.w = rbmenu.w + 3 * rbmenu.font_w + 50;
-	rbmenu.h = rbmenu.count * rbmenu.item_h;
-	SetEventMask(EVM_REDRAW+EVM_KEY+EVM_BUTTON+EVM_MOUSE);
-	goto _MENU_DRAW;
-	
-	loop() switch(WaitEvent())
-	{
-		case evMouse:
-				mouse.get();
-				if (!CheckActiveProcess(MenuForm.ID)){ cmd_free=1; ExitProcess();}
-				else if (mouse.move)&&(rbmenu.ProcessMouse(mouse.x, mouse.y)) MenuListRedraw();
-				else if (mouse.key&MOUSE_LEFT)&&(mouse.up) {action_buf = cur_action_buf; cmd_free=1; ExitProcess(); }
-		break;
-				
-		case evKey:
-				GetKeys();
-				if (key_scancode == SCAN_CODE_ESC) {cmd_free=1;ExitProcess();}
-				if (key_scancode == SCAN_CODE_ENTER) {action_buf = cur_action_buf; cmd_free=1; ExitProcess(); }
-				if (rbmenu.ProcessKey(key_scancode)) MenuListRedraw();
-				break;
-				
-		case evReDraw: _MENU_DRAW:
-				if (menu_call_mouse) 
-					DefineAndDrawWindow(mouse.x+Form.left+5, mouse.y+Form.top+skin_height,rbmenu.w+3,rbmenu.h+6,0x01, 0, 0, 0x01fffFFF);
-				else 
-					DefineAndDrawWindow(Form.left+files.x+15, files.item_h*files.cur_y+files.y+Form.top+30,rbmenu.w+3,rbmenu.h+6,0x01, 0, 0, 0x01fffFFF);
-				GetProcessInfo(#MenuForm, SelfInfo);
-				DrawRectangle(0,0,rbmenu.w+1,rbmenu.h+2,col_graph);
-				DrawBar(1,1,rbmenu.w,1,0xFFFfff);
-				DrawPopupShadow(1,1,rbmenu.w,rbmenu.h,0);
-				MenuListRedraw();
+	if (active_menu == MENU_FILE) switch(_id) {
+		case 1: EventOpen(0); break;
+		case 2: ShowOpenWithDialog(); break;
+		case 3: CopyFilesListToClipboard(COPY); break;
+		case 4: CopyFilesListToClipboard(CUT); break;
+		case 5: EventPaste(path); break;
+		case 6: FnProcess(2); break;
+		case 7: ShowPopinForm(POPIN_DELETE); break;
+		case 8: FnProcess(1); break;
 	}
+	if (active_menu == MENU_BURGER) switch(_id) {
+		case 1: EventOpenNewEolite(); break;
+		case 2: EventOpenConsoleHere(); break;
+		case 3: EventRefreshDisksAndFolders(); break;
+		case 4: FnProcess(10); break;
+		case 5: EventShowAbout(); break;		
+	}
+	active_menu = NULL;
 }
 
-void MenuListRedraw()
+void EventShowListMenu()
 {
-	int start_y=0;
-	int index;
+	dword text;
 
-	dword m_col_bg;
-	dword m_col_text;
-	dword m_col_sh_text;
+	pause(3);
 
-	for (index=0; file_captions[index*3]!=0; index++)
-	{
-		if (selected_count > 0) {
-			if (file_captions[index*3+2]==100) continue;
-			if (file_captions[index*3+2]>=200) continue;
-		}
-		else if ((itdir) && (file_captions[index*3+2]>=200)) continue;
-		DrawBar(1,start_y+2,1,rbmenu.item_h,0xFFFfff);
-		if (start_y/rbmenu.item_h==rbmenu.cur_y)
-		{
-			cur_action_buf = file_captions[index*3+2];
-			m_col_bg = 0xFFFfff;
-			m_col_sh_text = 0xFAFAFA;
-			m_col_text = 0;
-		}
-		else
-		{
-			m_col_bg = col_work;
-			m_col_text = system.color.work_text;
-			m_col_sh_text = system.color.work_light;
-		}
-		DrawBar(2, start_y+2, rbmenu.w-1, rbmenu.item_h, m_col_bg);
-		WriteText(8, start_y + rbmenu.text_y + 4, rbmenu.font_type, m_col_sh_text, file_captions[index*3]);
-		WriteText(7, start_y + rbmenu.text_y + 3, rbmenu.font_type, m_col_text, file_captions[index*3]);
-		WriteText(-strlen(file_captions[index*3+1])-1*rbmenu.font_w + rbmenu.w, start_y + rbmenu.text_y + 3, rbmenu.font_type, 0x888888, file_captions[index*3+1]);
-		start_y+=rbmenu.item_h;
-	}	
+	if (!files.count) {
+		text = #empty_folder_actions;
+		active_menu = MENU_NO_FILE;
+	} else {
+		text = #file_actions;
+		active_menu = MENU_FILE;
+	}
+	open_lmenu(mouse.x, mouse.y+3, MENU_TOP_LEFT, NULL, text);
 }
+
+void EventShowBurgerMenu()
+{
+	active_menu = MENU_BURGER;
+	open_lmenu(Form.cwidth-6, 35, MENU_TOP_RIGHT, NULL, #burger_menu_items);
+}
+
+bool GetMenuClick()
+{
+	dword click_id;
+	if (active_menu) && (click_id = get_menu_click()) {
+		EventMenuClick(click_id);
+		return false;
+	}
+	return true;
+}
+

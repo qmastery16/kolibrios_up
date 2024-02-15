@@ -44,12 +44,6 @@ include '../../proc32.inc'
 include '../../develop/libraries/box_lib/trunk/box_lib.mac'
 include '../../dll.inc'
 ;include '../../debug.inc'
-
-
-;include 'include/macros.inc'
-;include 'include/proc32.inc'
-;include 'include/box_lib.mac'
-;include 'include/dll.inc'
 include 'debug.inc'
 
 version equ '0.70'
@@ -182,10 +176,6 @@ start:
 	mov	dword[edtUnpPath.size], eax
 	mov	dword[edtUnpPath.pos], eax
 
-;--------
-;       call    file_tree_Init
-
-
 ;main loop --------------------
 wm_redraw:
 	call winRedraw
@@ -247,7 +237,6 @@ wm_mouse:
 	jne	still
 	stdcall [edit_box_mouse],edtPack
 	stdcall [edit_box_mouse],edtUnpPath
-;       stdcall file_tree_Mouse
 	jmp	still
 
 exit:
@@ -297,8 +286,6 @@ else
 end if
 	mcall 4, <(WIN_W-47),12>, , strDots
 	mcall 4, <(WIN_W-47),37>, , strDots	
-
-;       call file_tree_Draw
 
 	mcall 12, 2
 	ret
@@ -676,7 +663,6 @@ strDots db '...', 0
 ;                      int num_buttons, const char* buttons[]);
 ; int __stdcall DialogBox(DLGDATA* dlg);
 
-forpassword rd 1
 stateDlg dd 0 ;0 - in process, 1 - button ok, 2 - button cancel
 errmess0 dd strErrorExc
 
@@ -774,11 +760,12 @@ fsRunNotifyOK:
 
 
 edtPack     edit_box (WIN_W-100-60),100,10,0FFFFFFh,0xff,0x80ff,0h,0x90000000,\
-            255, fInp, 0,0,0,0
+            1024, fInp, 0,0,0,0
 edtUnpPath  edit_box (WIN_W-100-60),100,35,0FFFFFFh,0xff,0x80ff,0h,0x90000000,\
-            255, pathOut, 0,0,0,0
-edtPassword edit_box 200,56,70,0FFFFFFh,0xff,0x80ff,0h,0x90000000,255,\
-		password, 0,0,0,0
+            1024, pathOut, 0,0,0,0
+edtPassword edit_box 200, 56, 40, 0FFFFFFh,0xff,0x80ff,0h,0x90000000,\
+            255, 0, 0, ed_focus+ed_always_focus ;+ed_pass
+
 endEdits:
 
 
@@ -855,7 +842,7 @@ import	proc_lib,\
 	OpenDialog_Init 	,'OpenDialog_init',\
 	OpenDialog_Start	,'OpenDialog_start'
 import	box_lib,\
-	edit_box_draw		,'edit_box',\
+	edit_box_draw		,'edit_box_draw',\
 	edit_box_key		,'edit_box_key',\
 	edit_box_mouse		,'edit_box_mouse'
 
@@ -876,7 +863,6 @@ path rb 512
 fInp	rb 1024
 pathOut rb 1024 	;путь, куда распакуется всё
 files	rd 256
-password	rb 256
 
 fZipInfo	 rb 40
 

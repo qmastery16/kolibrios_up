@@ -1,6 +1,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                                  ;;
-;; Copyright (C) KolibriOS team 2004-2015. All rights reserved.     ;;
+;; Copyright (C) KolibriOS team 2004-2021. All rights reserved.     ;;
 ;; Distributed under terms of the GNU General Public License        ;;
 ;;                                                                  ;;
 ;;  AMD PCnet driver for KolibriOS                                  ;;
@@ -21,13 +21,17 @@ entry START
         COMPATIBLE_API          = 0x0100
         API_VERSION             = (COMPATIBLE_API shl 16) + CURRENT_API
 
-        MAX_DEVICES             = 16
+; configureable area
 
-        __DEBUG__               = 1
-        __DEBUG_LEVEL__         = 2             ; 1 = verbose, 2 = errors only
+        MAX_DEVICES             = 16    ; Maximum number of devices this driver may handle
 
-        TX_RING_SIZE            = 4
-        RX_RING_SIZE            = 4
+        __DEBUG__               = 1     ; 1 = on, 0 = off
+        __DEBUG_LEVEL__         = 2     ; 1 = verbose, 2 = errors only
+
+        TX_RING_SIZE            = 32    ; Number of packets in send ring buffer
+        RX_RING_SIZE            = 32    ; Number of packets in receive ring buffer
+
+; end configureable area
 
 section '.flat' readable writable executable
 
@@ -37,6 +41,15 @@ include '../proc32.inc'
 include '../fdo.inc'
 include '../netdrv.inc'
 
+if (bsr TX_RING_SIZE)>(bsf TX_RING_SIZE)
+  display 'TX_RING_SIZE must be a power of two'
+  err
+end if
+
+if (bsr RX_RING_SIZE)>(bsf RX_RING_SIZE)
+  display 'RX_RING_SIZE must be a power of two'
+  err
+end if
 
         PORT_AUI                = 0x00
         PORT_10BT               = 0x01
@@ -49,14 +62,8 @@ include '../netdrv.inc'
 
         DMA_MASK                = 0xffffffff
 
-        LOG_TX_BUFFERS          = 2             ; FIXME
-        LOG_RX_BUFFERS          = 2
-
-        TX_RING_MOD_MASK        = (TX_RING_SIZE-1)
-        TX_RING_LEN_BITS        = (LOG_TX_BUFFERS shl 12)
-
-        RX_RING_MOD_MASK        = (RX_RING_SIZE-1)
-        RX_RING_LEN_BITS        = (LOG_RX_BUFFERS shl 4)
+        TX_RING_LEN_BITS        = ((bsf TX_RING_SIZE) shl 12)
+        RX_RING_LEN_BITS        = ((bsf RX_RING_SIZE) shl 4)
 
         PKT_BUF_SZ              = 1544
 
@@ -281,11 +288,9 @@ include '../netdrv.inc'
         MAX_PHYS                = 32
 
 
-struct  device          ETH_DEVICE
-
-        rb 0x100-($ and 0xff)   ; align 256
-
 ; Pcnet configuration structure
+struct  pcnet_init_block
+
         mode            dw ?
         tlen_rlen       dw ?
         phys_addr       dp ?
@@ -293,19 +298,24 @@ struct  device          ETH_DEVICE
         filter          dq ?
         rx_ring_phys    dd ?
         tx_ring_phys    dd ?
-; end of pcnet config struct
+ends
+
+
+struct  device          ETH_DEVICE
 
         rb 0x100-($ and 0xff)   ; align 256
+        init_block      pcnet_init_block
 
+        rb 0x100-($ and 0xff)   ; align 256
         rx_ring         rb RX_RING_SIZE * sizeof.descriptor
 
         rb 0x100-($ and 0xff)   ; align 256
-
         tx_ring         rb TX_RING_SIZE * sizeof.descriptor
 
-        cur_rx          db ?
-        cur_tx          db ?
-        last_tx         db ?
+        cur_rx          dd ?
+        cur_tx          dd ?
+        last_tx         dd ?
+
         options         dd ?
         full_duplex     db ?
         chip_version    dw ?
@@ -321,6 +331,10 @@ struct  device          ETH_DEVICE
         pci_dev         dd ?
 
         phy             dw ?
+
+        link_timer      dd ?
+
+        rb 0x100-($ and 0xff)   ; align 256
 
         read_csr        dd ?
         write_csr       dd ?
@@ -513,6 +527,12 @@ endp
 
 align 4
 unload:
+
+        cmp     [ebx + device.link_timer], 0
+        je      @f
+        invoke  CancelTimerHS, [ebx + device.link_timer]
+  @@:
+
         ; TODO: (in this particular order)
         ;
         ; - Stop the device
@@ -693,14 +713,20 @@ probe:
         invoke  PciWrite32, [ebx + device.pci_bus], [ebx + device.pci_dev], PCI_header00.command, eax
 
         mov     [ebx + device.options], PORT_ASEL
-        mov     [ebx + device.mode], MODE_RXD + MODE_TXD     ; disable receive and transmit
-        mov     [ebx + device.tlen_rlen], (TX_RING_LEN_BITS or RX_RING_LEN_BITS)
+        mov     [ebx + device.init_block.mode], MODE_RXD + MODE_TXD     ; disable receive and transmit
+        mov     [ebx + device.init_block.tlen_rlen], (TX_RING_LEN_BITS or RX_RING_LEN_BITS)
 
-        mov     dword[ebx + device.filter], 0
-        mov     dword[ebx + device.filter+4], 0
+        mov     dword[ebx + device.init_block.filter], 0
+        mov     dword[ebx + device.init_block.filter+4], 0
 
 align 4
 reset:
+
+; Stop link check timer if it was already running
+        cmp     [ebx + device.link_timer], 0
+        je      @f
+        invoke  CancelTimerHS, [ebx + device.link_timer]
+  @@:
 
 ; attach int handler
 
@@ -803,9 +829,9 @@ reset:
         mov     eax, [ebx + device.options]
         and     eax, PORT_PORTSEL
         shl     eax, 7
-        mov     [ebx + device.mode], ax
-        mov     dword [ebx + device.filter], -1
-        mov     dword [ebx + device.filter+4], -1
+        mov     [ebx + device.init_block.mode], ax
+        mov     dword [ebx + device.init_block.filter], -1
+        mov     dword [ebx + device.init_block.filter+4], -1
 
 
 
@@ -822,14 +848,14 @@ reset:
         cmp     ax, 0xffff
         je      .next
 
-        DEBUGF  1, "0x%x\n", ax
+        DEBUGF  1, "PHY ID1: 0x%x\n", ax
 
         mov     ecx, MII_PHYSID2
         call    mdio_read
         cmp     ax, 0xffff
         je      .next
 
-        DEBUGF  1, "0x%x\n", ax
+        DEBUGF  1, "PHY ID2: 0x%x\n", ax
 
         jmp     .got_phy
 
@@ -860,7 +886,7 @@ reset:
         call    read_mac
 
         lea     esi, [ebx + device.mac]
-        lea     edi, [ebx + device.phys_addr]
+        lea     edi, [ebx + device.init_block.phys_addr]
         movsd
         movsw
 
@@ -868,21 +894,21 @@ reset:
         test    eax, eax
         jnz     .fail
 
-        mov     edx, [ebx + device.io_addr]   ; init ring destroys edx
+        mov     edx, [ebx + device.io_addr]     ; init ring destroys edx
 
-        lea     eax, [ebx + device.mode]
+        lea     eax, [ebx + device.init_block]
         invoke  GetPhysAddr
         push    eax
         and     eax, 0xffff
-        mov     ecx, 1
+        mov     ecx, CSR_IAB0
         call    [ebx + device.write_csr]
         pop     eax
         shr     eax, 16
-        mov     ecx, 2
+        mov     ecx, CSR_IAB1
         call    [ebx + device.write_csr]
 
-        mov     ecx, 4
-        mov     eax, 0x0915
+        mov     ecx, CSR_TFEAT
+        mov     eax, 0x0915                     ; Auto TX PAD ?
         call    [ebx + device.write_csr]
 
 ; Set the interrupt mask
@@ -912,13 +938,17 @@ reset:
         mov     eax, CSR_START + CSR_INTEN
         call    [ebx + device.write_csr]
 
-; Set the mtu, kernel will be able to send now
+; Set the MTU
         mov     [ebx + device.mtu], 1514
 
-; get link status
         mov     [ebx + device.state], ETH_LINK_UNKNOWN
-
-        call    check_media
+; Start media check timer
+        cmp     [ebx + device.mii], 0
+        je      @f
+        mov     [ebx + device.state], ETH_LINK_DOWN
+        invoke  TimerHS, 0, 50, check_media_mii, ebx
+        mov     [ebx + device.link_timer], eax
+  @@:
 
         DEBUGF  1,"reset complete\n"
         xor     eax, eax
@@ -934,7 +964,7 @@ init_ring:
         lea     edi, [ebx + device.rx_ring]
         mov     eax, edi
         invoke  GetPhysAddr
-        mov     [ebx + device.rx_ring_phys], eax
+        mov     [ebx + device.init_block.rx_ring_phys], eax
         mov     ecx, RX_RING_SIZE
   .rx_init:
         push    ecx
@@ -947,8 +977,8 @@ init_ring:
         add     eax, NET_BUFF.data
         mov     [edi + descriptor.base], eax
         mov     [edi + descriptor.length], - PKT_BUF_SZ
-        mov     [edi + descriptor.status], RXSTAT_OWN
         mov     dword[edi + descriptor.msg_length], 0    ; also clears misc field
+        mov     [edi + descriptor.status], RXSTAT_OWN
         add     edi, sizeof.descriptor
         dec     ecx
         jnz     .rx_init
@@ -956,7 +986,7 @@ init_ring:
         lea     edi, [ebx + device.tx_ring]
         mov     eax, edi
         invoke  GetPhysAddr
-        mov     [ebx + device.tx_ring_phys], eax
+        mov     [ebx + device.init_block.tx_ring_phys], eax
         mov     ecx, TX_RING_SIZE
   .tx_init:
         mov     [edi + descriptor.status], 0
@@ -964,7 +994,7 @@ init_ring:
         dec     ecx
         jnz     .tx_init
 
-        mov     [ebx + device.tlen_rlen], (TX_RING_LEN_BITS or RX_RING_LEN_BITS)
+        mov     [ebx + device.init_block.tlen_rlen], (TX_RING_LEN_BITS or RX_RING_LEN_BITS)
 
         mov     [ebx + device.cur_tx], 0
         mov     [ebx + device.last_tx], 0
@@ -992,8 +1022,7 @@ init_ring:
 
 proc transmit stdcall bufferptr
 
-        pushf
-        cli
+        spin_lock_irqsave
 
         mov     esi, [bufferptr]
         DEBUGF  1,"Transmitting packet, buffer:%x, size:%u\n", [bufferptr], [esi + NET_BUFF.length]
@@ -1004,18 +1033,18 @@ proc transmit stdcall bufferptr
         [eax+13]:2,[eax+12]:2
 
         cmp     [esi + NET_BUFF.length], 1514
-        ja      .fail
+        ja      .error
         cmp     [esi + NET_BUFF.length], 60
-        jb      .fail
+        jb      .error
 
 ; check descriptor
         lea     edi, [ebx + device.tx_ring]
-        movzx   ecx, [ebx + device.cur_tx]
+        mov     ecx, [ebx + device.cur_tx]
         shl     ecx, 4
         add     edi, ecx
 
         test    [edi + descriptor.status], TXCTL_OWN
-        jnz     .fail
+        jnz     .overrun
 ; descriptor is free, use it
         mov     [edi + descriptor.virtual], esi
         mov     eax, esi
@@ -1036,7 +1065,7 @@ proc transmit stdcall bufferptr
         or      eax, CSR_TX
         call    [ebx + device.write_csr]
 
-; get next descriptor 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, ...
+; get next descriptor
         inc     [ebx + device.cur_tx]
         and     [ebx + device.cur_tx], TX_RING_SIZE - 1
 
@@ -1046,15 +1075,25 @@ proc transmit stdcall bufferptr
         add     dword[ebx + device.bytes_tx], eax
         adc     dword[ebx + device.bytes_tx + 4], 0
 
-  .finish:
-        popf
+        spin_unlock_irqrestore
         xor     eax, eax
         ret
 
-  .fail:
-        DEBUGF  2, "Send failed\n"
+  .error:
+        DEBUGF  2, "TX packet error\n"
+        inc     [ebx + device.packets_tx_err]
         invoke  NetFree, [bufferptr]
-        popf
+
+        spin_unlock_irqrestore
+        or      eax, -1
+        ret
+
+  .overrun:
+        DEBUGF  2, "TX overrun\n"
+        inc     [ebx + device.packets_tx_ovr]
+        invoke  NetFree, [bufferptr]
+
+        spin_unlock_irqrestore
         or      eax, -1
         ret
 
@@ -1110,7 +1149,8 @@ int_handler:
         push    ebx
   .rx_loop:
         pop     ebx
-        movzx   eax, [ebx + device.cur_rx]
+        push    ebx
+        mov     eax, [ebx + device.cur_rx]
         shl     eax, 4
         lea     edi, [ebx + device.rx_ring]
         add     edi, eax                        ; edi now points to current rx ring entry
@@ -1119,21 +1159,18 @@ int_handler:
         DEBUGF  1,"RX packet status: %x\n", eax:4
 
         test    ax, RXSTAT_OWN                  ; If this bit is set, the controller OWN's the packet, if not, we do
-        jnz     .not_receive
-
+        jnz     .rx_done
+; Both Start of packet and End of packet bits should be set, we dont support multi frame packets
         test    ax, RXSTAT_ENP
-        jz      .not_receive
-
+        jz      .rx_drop
         test    ax, RXSTAT_STP
-        jz      .not_receive
+        jz      .rx_drop
 
         movzx   ecx, [edi + descriptor.msg_length]      ; get packet length in ecx
         sub     ecx, 4                                  ; We dont need the CRC
         DEBUGF  1,"Got %u bytes\n", ecx
 
 ; Set pointers for ETH_input
-        push    ebx
-
         push    .rx_loop                                ; return address
         mov     eax, [edi + descriptor.virtual]
         push    eax                                     ; packet address
@@ -1149,7 +1186,7 @@ int_handler:
 ; now allocate a new buffer
         invoke  NetAlloc, PKT_BUF_SZ+NET_BUFF.data      ; Allocate a buffer for the next packet
         test    eax, eax
-        jz      .out_of_mem
+        jz      .rx_overrun
         mov     [edi + descriptor.virtual], eax         ; set virtual address
         invoke  GetPhysAddr
         add     eax, NET_BUFF.data
@@ -1161,13 +1198,25 @@ int_handler:
 
         jmp     [EthInput]
 
-  .out_of_mem:
-        DEBUGF  2,"Out of memory!\n"
+  .rx_overrun:
+        add     esp, 4+4
+        DEBUGF  2,"RX FIFO overrun\n"
+        inc     [ebx + device.packets_rx_ovr]
+        jmp     .rx_next
+
+  .rx_drop:
+        DEBUGF  2,"Dropping incoming packet\n"
+        inc     [ebx + device.packets_rx_drop]
+
+  .rx_next:
+        mov     [edi + descriptor.status], RXSTAT_OWN   ; give it back to PCnet controller
 
         inc     [ebx + device.cur_rx]                   ; set next receive descriptor
         and     [ebx + device.cur_rx], RX_RING_SIZE - 1
+        jmp     .rx_loop
 
-        jmp     [EthInput]
+  .rx_done:
+        pop     ebx
 
   .not_receive:
         pop     ax
@@ -1177,7 +1226,7 @@ int_handler:
 
   .tx_loop:
         lea     edi, [ebx + device.tx_ring]
-        movzx   eax, [ebx + device.last_tx]
+        mov     eax, [ebx + device.last_tx]
         shl     eax, 4
         add     edi, eax
 
@@ -1528,22 +1577,81 @@ mdio_write:
         ret
 
 
-align 4
-check_media:
 
-        DEBUGF  1, "check_media\n"
 
-        test    [ebx + device.mii], 1
-        jnz     mii_link_ok
+proc check_media_mii stdcall dev:dword
 
-        mov     ecx, BCR_LED0
-        call    [ebx + device.read_bcr]
-        cmp     eax, 0xc0
+        spin_lock_irqsave
 
-        DEBUGF  2, "link status=0x%x\n", ax
+        mov     ebx, [dev]
+        mov     edx, [ebx + device.io_addr]
 
+        mov     ecx, MII_BMSR
+        call    mdio_read
+
+        mov     ecx, MII_BMSR
+        call    mdio_read
+
+        mov     ecx, eax
+        and     eax, BMSR_LSTATUS
+        shr     eax, 2
+        cmp     eax, [ebx + device.state]
+        jne     .changed
+
+        spin_unlock_irqrestore
         ret
 
+  .changed:
+        test    eax, eax
+        jz      .update
+
+        test    ecx, BMSR_ANEGCOMPLETE
+        jz      .update
+
+        mov     ecx, MII_ADVERTISE
+        call    mdio_read
+        mov     esi, eax
+
+        mov     ecx, MII_LPA
+        call    mdio_read
+        and     eax, esi
+
+        test    eax, LPA_100FULL
+        jz      @f
+        mov     eax, ETH_LINK_SPEED_100M or ETH_LINK_FULL_DUPLEX
+        jmp     .update
+  @@:
+
+        test    eax, LPA_100HALF
+        jz      @f
+        mov     eax, ETH_LINK_SPEED_100M
+        jmp     .update
+  @@:
+
+        test    eax, LPA_10FULL
+        jz      @f
+        mov     eax, ETH_LINK_SPEED_10M or ETH_LINK_FULL_DUPLEX
+        jmp     .update
+  @@:
+
+        test    eax, LPA_10HALF
+        jz      @f
+        mov     eax, ETH_LINK_SPEED_10M
+        jmp     .update
+  @@:
+
+        mov     eax, ETH_LINK_UNKNOWN
+
+  .update:
+        mov     [ebx + device.state], eax
+        invoke  NetLinkChanged
+
+
+        spin_unlock_irqrestore
+        ret
+
+
+endp
 
 
 ; End of code

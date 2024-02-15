@@ -1,6 +1,6 @@
 if not exist bin mkdir bin
-if not exist bin\buf2d.obj @fasm.exe -m 16384 ..\..\..\develop\libraries\TinyGL\asm_fork\tinygl.asm bin\tinygl.obj
-@kpack bin\tinygl.obj
+@erase lang.inc
+@echo lang fix ru >lang.inc
 @fasm.exe -m 16384 vox_creator.asm bin\vox_creator.kex
 @kpack bin\vox_creator.kex
 @fasm.exe -m 16384 vox_mover.asm bin\vox_mover.kex

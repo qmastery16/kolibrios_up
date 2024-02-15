@@ -1,13 +1,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                              ;;
-;; Copyright (C) KolibriOS team 2010-2015. All rights reserved. ;;
+;; Copyright (C) KolibriOS team 2010-2023. All rights reserved. ;;
 ;; Distributed under terms of the GNU General Public License    ;;
 ;;                                                              ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-$Revision: 6585 $
-
-include 'mousepointer.inc'
+$Revision: 9941 $
 
 ;================================
 ;/////// public functions ///////
@@ -294,7 +292,7 @@ mouse._.left_button_release_handler:
         jz      .exit
 
         mov     eax, esi
-        shl     eax, 5
+        shl     eax, BSF sizeof.WDATA
         add     eax, window_data + WDATA.box
         mov     ebx, mouse.active_sys_window.old_box
         mov     ecx, sizeof.BOX
@@ -338,6 +336,99 @@ mouse._.move_handler:
 ; Called when cursor has been moved
 ;> eax = old x coord
 ;> ebx = old y coord
+        push    eax ebx
+
+        call    mouse._.find_sys_window_under_cursor
+        call    mouse._.check_sys_window_actions
+
+        ; if now we are resizing the window, dont change the cursor
+        mov     bl, [mouse.active_sys_window.action]
+        and     bl, mouse.WINDOW_RESIZE_S_FLAG or mouse.WINDOW_RESIZE_W_FLAG or mouse.WINDOW_RESIZE_E_FLAG
+        test    bl, bl
+        jnz     .end1
+
+        cmp     al, mouse.WINDOW_RESIZE_SW_FLAG
+        jne     .not_sw
+        ; DEBUGF  1, "RESIZE SOUTH-WEST\n"
+
+        mov     eax, [def_cursor_dresize2]
+
+        jmp     .set_resizing_cursor
+.not_sw:
+        cmp     al, mouse.WINDOW_RESIZE_SE_FLAG
+        jne     .not_se
+        ; DEBUGF  1, "RESIZE SOUTH-EAST\n"
+
+        mov     eax, [def_cursor_dresize1]
+
+        jmp     .set_resizing_cursor
+.not_se:
+        cmp     al, mouse.WINDOW_RESIZE_W_FLAG
+        jne     .not_w
+        ; DEBUGF  1, "RESIZE WEST\n"
+
+        mov     eax, [def_cursor_hresize]
+
+        jmp     .set_resizing_cursor
+.not_w:
+        cmp     al, mouse.WINDOW_RESIZE_S_FLAG
+        jne     .not_s
+        ; DEBUGF  1, "RESIZE SOUTH\n"
+
+        mov     eax, [def_cursor_vresize]
+
+        jmp     .set_resizing_cursor
+.not_s:
+        cmp     al, mouse.WINDOW_RESIZE_E_FLAG
+        jne     .not_in_resize_area
+        ; DEBUGF  1, "RESIZE EAST\n"
+
+        mov     eax, [def_cursor_hresize]
+
+.set_resizing_cursor:
+        ; DEBUGF  1, ".set_resizing_cursor eax = %x\n", eax
+        ; change cursor to resizing cursor
+        shl     esi, BSF sizeof.WDATA
+        add     esi, window_data
+        
+        ; if resizing cursor we need (eax) isnt set already, set it
+        cmp     eax, [esi + WDATA.cursor]
+        je      @f
+        
+        ; DEBUGF  1, "changing cursor to resizing\n"
+        xchg    eax, [esi + WDATA.cursor] ; set resizing cursor, prev cursor goes to eax
+        ; save previous cursor (will be restored when we'll get out of the resizing area)
+        ; if we change resizing cursor to resizing cursor then dont update previous cursor
+        cmp     eax, [def_cursor_hresize]
+        je      @f
+        cmp     eax, [def_cursor_vresize]
+        je      @f
+        cmp     eax, [def_cursor_dresize1]
+        je      @f
+        cmp     eax, [def_cursor_dresize2]
+        je      @f
+
+        mov     [esi + WDATA.temp_cursor], eax ; save prev cursor
+
+@@:
+        jmp     .end1
+.not_in_resize_area:
+        ; DEBUGF  1, ".not_in_resize_area\n"
+
+        shl     esi, BSF sizeof.WDATA
+        add     esi, window_data
+        mov     eax, [esi + WDATA.temp_cursor]
+
+        test    eax, eax
+        jz      .end1
+        
+        ; restore prev cursor
+        mov     [esi + WDATA.temp_cursor], 0
+        mov     [esi + WDATA.cursor], eax
+
+.end1:
+        pop     ebx eax
+
         cmp     [mouse.active_sys_button.pbid], 0
         jnz     .exit
 
@@ -371,6 +462,7 @@ mouse._.move_handler:
         cmp     eax, [_display.width]
         jl      @f
         sub     eax, [_display.width]
+        inc     eax
         sub     [mouse.active_sys_window.new_box.left], eax
     @@:
         mov     eax, [mouse.active_sys_window.new_box.top]
@@ -383,6 +475,7 @@ mouse._.move_handler:
         cmp     eax, [_display.height]
         jl      .call_window_handler
         sub     eax, [_display.height]
+        inc     eax
         sub     [mouse.active_sys_window.new_box.top], eax
         jmp     .call_window_handler
 
@@ -420,7 +513,7 @@ mouse._.move_handler:
 
         push    eax
         mov     edi, esi
-        shl     edi, 5
+        shl     edi, BSF sizeof.WDATA
         add     edi, window_data
         call    window._.get_rolledup_height
         mov     ecx, eax
@@ -487,7 +580,7 @@ mouse._.move_handler:
         mov     [fl_moving], 1
         push    edi
         mov     edi, esi
-        shl     edi, 5
+        shl     edi, BSF sizeof.WDATA
         add     edi, WDATA.box + window_data
         call    window._.draw_negative_box
         pop     edi
@@ -514,7 +607,7 @@ mouse._.find_sys_window_under_cursor:
         add     esi, [mouse.state.pos.x]
         movzx   esi, byte[esi]
         mov     edi, esi
-        shl     edi, 5
+        shl     edi, BSF sizeof.WDATA
         add     edi, window_data
         ret
 
@@ -682,4 +775,119 @@ mouse._.check_sys_window_actions:
         xor     eax, eax
 
   .exit:
+        ret
+;-----------------------------------------------------------------------------
+
+align 4
+readmousepos:
+; eax=0 screen relative
+; eax=1 window relative
+; eax=2 buttons pressed
+; eax=3 buttons pressed ext
+; eax=4 load cursor
+; eax=5 set cursor
+; eax=6 delete cursor
+; eax=7 get mouse_z
+; eax=8 load cursor unicode
+        cmp     ebx, 8
+        ja      @f
+        jmp     dword[.mousefn+ebx*4]
+
+align 4
+.mousefn:
+dd  .msscreen
+dd  .mswin
+dd  .msbutton
+dd  .msbuttonExt
+dd  .app_load_cursor
+dd  .app_set_cursor
+dd  .app_delete_cursor
+dd  .msz
+dd  .loadCursorUni
+
+.msscreen:
+        mov     eax, [MOUSE_X]
+        shl     eax, 16
+        mov     ax, [MOUSE_Y]
+        mov     [esp + SYSCALL_STACK.eax], eax
+@@:
+        ret
+
+.mswin:
+        mov     eax, [MOUSE_X]
+        shl     eax, 16
+        mov     ax, [MOUSE_Y]
+        mov     esi, [current_slot]
+        mov     esi, [esi + APPDATA.window]
+        mov     bx, word[esi + WDATA.box.left]
+        shl     ebx, 16
+        mov     bx, word[esi + WDATA.box.top]
+        sub     eax, ebx
+        sub     ax, word[esi + WDATA.clientbox.top]
+        rol     eax, 16
+        sub     ax, word[esi + WDATA.clientbox.left]
+        rol     eax, 16
+        mov     [esp + SYSCALL_STACK.eax], eax
+        ret
+
+.msbutton:
+        movzx   eax, byte [BTN_DOWN]
+        mov     [esp + SYSCALL_STACK.eax], eax
+        ret
+
+.msbuttonExt:
+        mov     eax, [BTN_DOWN]
+        mov     [esp + SYSCALL_STACK.eax], eax
+        ret
+
+.app_load_cursor:
+        cmp     ecx, OS_BASE
+        jae     @f
+        stdcall load_cursor, ecx, edx
+        mov     [esp + SYSCALL_STACK.eax], eax
+@@:
+        ret
+
+.loadCursorUni:
+        cmp     ecx, OS_BASE
+        jae     @b
+        push    ecx edx
+        stdcall kernel_alloc, maxPathLength
+        mov     edi, eax
+        pop     eax esi
+        push    edi
+        call    getFullPath
+        pop     ebp
+        test    eax, eax
+        jz      @f
+        stdcall load_cursor, ebp, LOAD_FROM_FILE
+        mov     [esp + SYSCALL_STACK.eax], eax
+@@:
+        stdcall kernel_free, ebp
+        ret
+
+.app_set_cursor:
+        stdcall set_cursor, ecx
+        mov     [esp + SYSCALL_STACK.eax], eax
+        ret
+
+.app_delete_cursor:
+        stdcall delete_cursor, ecx
+        mov     [esp + SYSCALL_STACK.eax], eax
+        ret
+
+.msz:
+        mov     edi, [thread_count]
+        movzx   edi, word [WIN_POS + edi*2]
+        cmp     edi, [current_slot_idx]
+        jne     @f
+        mov     ax, [MOUSE_SCROLL_H]
+        shl     eax, 16
+        mov     ax, [MOUSE_SCROLL_V]
+        mov     [esp + SYSCALL_STACK.eax], eax
+        and     [MOUSE_SCROLL_H], word 0
+        and     [MOUSE_SCROLL_V], word 0
+        ret
+@@:
+        and     [esp + SYSCALL_STACK.eax], dword 0
         ret

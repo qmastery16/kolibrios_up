@@ -4,7 +4,7 @@
 ;
 ;    You may add you own figures. See file FIGURES.INC
 ;
-;    Compile with FASM v1.48 for Menuet or hier  (FASM v1.40 contains bug)
+;    Compile with FASM v1.73 for Kolibri or hier
 ;
 ;    Copyright(c) 2002-2004 Crown_s Soft. All rights reserved.
 ;
@@ -12,6 +12,7 @@
 fullscreen = 1
 n_points = 0x1800
 delay = 2
+const480 = 480
 speed equ 0.004
 
 
@@ -25,16 +26,33 @@ use32
 	       dd     i_end		      ; size of image
 	       dd     i_end+0x1000	      ; memory for app
 	       dd     i_end+0x1000	      ; esp
-	       dd     0x0		      ; I_Param
+	       dd     params		      ; I_Param
 	       dd     0x0		      ; I_Icon
 
-copyright db   'Crown_s Soft(c) Screensaver v1.13m    www.crown-s-soft.com',0
+copyright db   'Crown_s Soft(c) Screensaver - www.crown-s-soft.com',0
 copyrightlen:
 
 include "lang.inc"
 include "figuresi.inc"
 include "..\..\..\macros.inc"
+include "..\..\..\KOSfuncs.inc"
 start:
+    cmp     dword[params], '@ss'
+    setz    [screensaver]
+    mov     ebx, EVM_REDRAW + EVM_KEY + EVM_BUTTON
+    cmovz   ebx, EVM_REDRAW + EVM_KEY + EVM_BUTTON + EVM_MOUSE
+    mcall   SF_SET_EVENTS_MASK
+
+    cmp [flscr],0
+    jz @f
+    mov     edi, transparent_cursor
+    xor     eax, eax
+    mov     ecx, 32*32
+    rep     stosd
+    mcall   SF_MOUSE_GET, SSF_LOAD_CURSOR, transparent_cursor, 2
+    mov     ecx, eax
+    mcall   SF_MOUSE_GET, SSF_SET_CURSOR
+@@:
     cld
     finit
     call filling_alfbet ; fill table alfbet by casual numbers
@@ -45,11 +63,10 @@ start:
 
     cmp [flscr],0
     jz	nofullscreen
-      mov  eax,14
-      mcall
+      mcall SF_GET_SCREEN_SIZE
 
       mov  [maxy],ax
-      sub  ax,480
+      sub  ax,const480
       jnc m5
 	xor ax,ax
       m5:
@@ -58,49 +75,50 @@ start:
 
       shr  eax,16
       mov  [maxx],ax
-      sub  ax,480
+      sub  ax,const480
       jnc m6
 	xor ax,ax
       m6:
       shr  ax,1
       mov  [posx],ax
 
-      mov  [outsize],480+65536*480
+      mov  [outsize],const480+65536*const480
     jmp m4
     nofullscreen:
       mov  [posx],75
       mov  [posy],20
 
-      mov  [outsize],450+65536*480
+      mov  [outsize],const480+65536*const480
     m4:
 
 red:
     call draw_window
 
 still:
-    mov  eax,23
-    mov  ebx,delay
-    mcall			; wait here for event
-
+    mcall SF_WAIT_EVENT_TIMEOUT, delay			; wait here for event
+	
     cmp  eax,1			; redraw request ?
     je	 red
     cmp  eax,2			; key in buffer ?
     je	 key
     cmp  eax,3			; button in buffer ?
-    je	 button
-
+    je	 close
+    cmp  eax,6			; mouse moved ?
+    je	 close
 
     call calcframe
-    mov  edx,dword [posy]     ; edx=image position in window [x]*65536+[y]
-    mov  ecx,[outsize]	      ; ecx=image position in window [x]*65536+[y]
+    mov  eax,SF_PUT_IMAGE
     mov  ebx,scr	      ; ebx pointer to image in memory
-    mov  eax,07 	      ; putimage
+    mov  ecx,[outsize]	      ; ecx=image position in window [w]*65536+[h]
+    mov  edx,dword [posy]     ; edx=image position in window [x]*65536+[y]
     mcall
 jmp  still
 
 key:
-    mov  eax,2
-    mcall
+	cmp  [screensaver], 0
+	jnz  close
+	
+    mcall SF_GET_KEY
 
     cmp  al,1			; is key in buffer ?
     jz	 still
@@ -108,16 +126,12 @@ key:
     jz	 close
 jmp  still
 
-button: 			; button
-    mov  eax,17 		; get id
-    mcall
-
-;    cmp  ah,1                   ; button id=1 ?
-;    jne  still
-
 close:
-    mov  eax,-1 		; close this program
-    mcall
+    cmp     [screensaver], 0
+    jz      @f
+    mcall   SF_FILE, f70
+  @@:
+    mcall   SF_TERMINATE_PROCESS
 
 
 ;   *********************************************
@@ -126,35 +140,17 @@ close:
 
 
 draw_window:
-    mov  eax,12 		     ; function 12:tell os about windowdraw
-    mov  ebx,1			     ; 1, start of draw
-    mcall
+    mcall SF_REDRAW, SSF_BEGIN_DRAW ;start draw
 
     cmp  [flscr],0
     jnz  m2
-      mov  ebx,1*65536+638	     ; [x start] *65536 + [x size]
-      mov  ecx,1*65536+478	     ; [y start] *65536 + [y size]
-      mov  edx,0x02000000	     ; color of work area RRGGBB,8->color gl
-      mov  esi,0x805080d0	     ; color of grab bar  RRGGBB,8->color gl
-      mov  edi,0x005080d0	     ; color of frames    RRGGBB
-      xor  eax,eax		     ; function 0 : define and draw window
-      mcall
+      mcall SF_STYLE_SETTINGS, SSF_GET_SKIN_HEIGHT
+      mov  esi, eax
+                                   ; DRAW WINDOW
+      mov  ecx,100*65536+const480+4         ; [y start] *65536 + [y size]
+      add  ecx, esi
+      mcall SF_CREATE_WINDOW, 100*65536+const480+9,,0x74000000,,copyright
 
-				     ; WINDOW LABEL
-      mov  ebx,8*65536+8	     ; [x start] *65536 + [y start]
-      mov  ecx,0x10ddeeff	     ; color of text RRGGBB
-      mov  edx,copyright	     ; pointer to text beginning
-      mov  esi,copyrightlen-copyright; text length
-      mov  eax,4		     ; function 4 : write text to window
-      mcall
-
-				     ; CLOSE BUTTON
-      mov  ebx,(640-19)*65536+12     ; [x start] *65536 + [x size]
-      mov  ecx,5*65536+12	     ; [y start] *65536 + [y size]
-      mov  edx,1		     ; button id
-      mov  esi,0x6688dd 	     ; button color RRGGBB
-      mov  eax,8		     ; function 8 : define and draw button
-      mcall
     jmp m3
     m2:
       movzx  ebx,[maxx] 	     ; [x start] *65536 + [x size]
@@ -168,20 +164,17 @@ draw_window:
 
       inc bx
       inc cx
-      mov eax,13		     ; functiom 13 : draw bar
-      mcall
+      mcall SF_DRAW_RECT
     m3:
 
-    mov  eax,12 		     ; function 12:tell os about windowdraw
-    mov  ebx,2			     ; 2, end of draw
-    mcall
+    mcall SF_REDRAW, SSF_END_DRAW ;end draw
 ret
 
 
 calcframe:
      cld
      mov  edi,scr
-     mov  ecx,480*480*3/4
+     mov  ecx,const480*const480*3/4
      xor  eax,eax
      rep stosd	   ; CLS
 
@@ -292,7 +285,7 @@ turn:
 
   mov  eax,[x1]
   add  eax,[mid]
-  mul  [const480]
+  mul  [consts]
   add  eax,[y1]
   add  eax,[mid]
   mul  [const3]
@@ -331,8 +324,7 @@ ret
 
 filling_alfbet:
      ; Initialize RND
-     mov   eax,3
-     mcall
+     mcall SF_GET_SYS_TIME
      ; eax - fist random number
 
      mov   ecx,n_points
@@ -361,7 +353,7 @@ align 2
 
   const3   dd	 3
   const6   dw	 6
-  const480 dd	 480
+  consts   dd    const480
 
   mFl	  dd	 n_points
   pp1	  dw	 0
@@ -398,7 +390,15 @@ align 2
   y1	  dd	 ?
   z1	  dd	 ?
 
+f70:    ; run
+        dd SSF_START_APP, 0, 0, 0, 0
+        db '/sys/@SS',0
+
+screensaver db ?
+params rb 4
+transparent_cursor rd 32*32
+
 align 16
   alfbet:		  ; alfbet  db  n_points*4  dup (?)
   scr = alfbet+n_points*4   ; scr     db  480*480*3+1 dup (?)
-  i_end = scr+480*480*3+1 ; i_param db  256         dup (?)
+  i_end = scr+const480*const480*3+1 ; i_param db  256         dup (?)

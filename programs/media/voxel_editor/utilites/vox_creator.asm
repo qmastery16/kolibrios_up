@@ -3,19 +3,25 @@ use32
 	db 'MENUET01' ;идентиф. исполняемого файла всегда 8 байт
 	dd 1,start,i_end,mem,stacktop,openfile_path,sys_path
 
-include '../../../../programs/macros.inc'
-include '../../../../programs/proc32.inc'
-include '../../../../programs/KOSfuncs.inc'
-include '../../../../programs/load_img.inc'
+include '../../../macros.inc'
+include '../../../proc32.inc'
+include '../../../KOSfuncs.inc'
+include '../../../load_img.inc'
+include '../../../load_lib.mac'
 include '../trunk/str.inc'
+include 'lang.inc'
 
 vox_offs_tree_table equ 4
 vox_offs_data equ 12
 txt_buf rb 8
 include '../trunk/vox_rotate.inc'
 
-@use_library_mem mem.Alloc,mem.Free,mem.ReAlloc,dll.Load
-caption db 'Voxel creator 22.03.18',0 ;подпись окна
+@use_library mem.Alloc,mem.Free,mem.ReAlloc,dll.Load
+if lang eq ru
+caption db 'Создатель вокселей 04.05.20',0 ;подпись окна
+else
+caption db 'Voxel creator 04.05.20',0
+end if
 
 BUF_STRUCT_SIZE equ 21
 buf2d_data equ dword[edi] ;данные буфера изображения
@@ -27,14 +33,15 @@ buf2d_size_lt equ dword[edi+4] ;отступ слева и справа для буфера
 buf2d_color equ dword[edi+16] ;цвет фона буфера
 buf2d_bits equ byte[edi+20] ;количество бит в 1-й точке изображения
 
-vox_offs_tree_table equ 4
-vox_offs_data equ 12
-
-run_file_70 FileInfoBlock
 vox_obj_size dd 0 ;размер воксельного объекта (для ускорения вставки)
 txt_space db ' ',0
+if lang eq ru
 txt_pref db ' б ',0,' Кб',0,' Мб',0,' Гб',0 ;приставки: кило, мега, гига
 txt_f_size: db 'Размер: '
+else
+txt_pref db ' b ',0,' Kb',0,' Mb',0,' Gb',0 ;приставки: кило, мега, гига
+txt_f_size: db 'Size: '
+end if
 .size: rb 16
 
 IMAGE_TOOLBAR_ICON_SIZE equ 16*16*3
@@ -469,42 +476,52 @@ button:
 	cmp ah,3
 	jne @f
 		call but_new_file
+		jmp still
 	@@:
 	cmp ah,4
 	jne @f
-		call but_open_file
+		call but_open_file ;открытие воксельного файла
+		jmp still
 	@@:
 	cmp ah,5
 	jne @f
 		call but_save_file
+		jmp still
 	@@:
 	cmp ah,6
 	jne @f
 		call but_1
+		jmp still
 	@@:
 	cmp ah,7
 	jne @f
 		call but_2
+		jmp still
 	@@:
 	cmp ah,8
 	jne @f
 		call but_3
+		jmp still
 	@@:
 	cmp ah,9
 	jne @f
 		stdcall but_run, 0
+		jmp still
 	@@:
 	cmp ah,10
 	jne @f
 		stdcall but_run, 1
+		jmp still
 	@@:
 	cmp ah,11
 	jne @f
-		call but_5
+		call but_stop
+		jmp still
 	@@:
 	cmp ah,12
 	jne @f
 		call but_rot_z
+		jmp still
 	@@:
 	cmp ah,1
 	jne still
@@ -769,7 +786,7 @@ bby_max dd 0
 k_scale dd 0
 n_plane dd 0
 
-calc db 0
+calc db 0 ;если =1, то идет создание объекта
 
 ; создание вокселя в 3 этапа:
 ; 1) ищем место в структуре дерева, куда надо вставить (если ветвь существует, 2-й этап пропускаем)
@@ -988,7 +1005,6 @@ coord_x:dword,coord_y:dword,coord_z:dword,k_scale:dword
 	ret
 endp
 
-;
 ;output:
 ; eax - размер в байтах занимаемый объектом v_obj
 align 4
@@ -1080,8 +1096,9 @@ proc but_run uses eax ebx edi, mode_add:dword
 	ret
 endp
 
+;прекратить создание объекта
 align 4
-but_5:
+but_stop:
 	cmp byte[calc],0
 	je @f
 		call draw_object
@@ -1131,6 +1148,9 @@ proc open_image_in_buf, buf:dword
 		stdcall dword[img_decode], dword[open_file_img],ebx,0
 		or eax,eax
 		jz .end_0 ;если нарушен формат файла
+		mov ebx,[eax+4] ;+4 = image width
+		cmp ebx,[eax+8] ;+8 = image height
+		jne .err_s0
 		mov ebx,eax
 		;преобразуем изображение к формату rgb
 		stdcall dword[img_to_rgb2], ebx,dword[open_file_img]
@@ -1139,11 +1159,11 @@ proc open_image_in_buf, buf:dword
 		cmp buf2d_data,0
 		jne @f
 			m2m buf2d_w,dword[ebx+4] ;+4 = image width
-			m2m buf2d_h,dword[ebx+8] ;+8 = image heihht
+			m2m buf2d_h,dword[ebx+8] ;+8 = image height
 			stdcall [buf2d_create_f_img], edi,[open_file_img]
 			jmp .end_1
 		@@:
-			mov ecx,dword[ebx+8]
+			mov ecx,[ebx+8]
 			stdcall [buf2d_resize], edi, [ebx+4],ecx,1 ;изменяем размеры буфера
 			imul ecx,[ebx+4]
 			lea ecx,[ecx+ecx*2]
@@ -1151,8 +1171,11 @@ proc open_image_in_buf, buf:dword
 			mov esi,[open_file_img]
 			cld
 			rep movsb ;copy image
+			jmp .end_1
+		.err_s0: ;ошибка, изображение для преобразования не подходит (не квадратное)
+			mov ebx,eax
+			notify_window_run txt_img_not_square
 		.end_1:
-
 		;удаляем временный буфер в ebx
 		stdcall dword[img_destroy], ebx
 	.end_0:
@@ -1199,6 +1222,8 @@ msgbox_4:
 	db 'Закрыть',0
 	db 0
 
+txt_img_not_square db '"Внимание',13,10,'Открываемое изображение не квадратное" -tW',0
+
 ;данные для диалога открытия файлов
 align 4
 OpenDialog_data:
@@ -1221,14 +1246,14 @@ OpenDialog_data:
 .y_size 		dw 320 ;+52 ; Window y size
 .y_start		dw 10 ;+54 ; Window Y position
 
-default_dir db '/rd/1',0
+default_dir db '/sys',0
 
 communication_area_name:
 	db 'FFFFFFFF_open_dialog',0
 open_dialog_name:
 	db 'opendial',0
 communication_area_default_path:
-	db '/rd/1/File managers/',0
+	db '/sys/File managers/',0
 
 Filter:
 dd Filter.end - Filter ;.1
@@ -1244,38 +1269,21 @@ db 0
 
 
 
-head_f_i:
-head_f_l db 'Системная ошибка',0
-
 system_dir_0 db '/sys/lib/'
 lib_name_0 db 'proc_lib.obj',0
-err_message_found_lib_0 db 'Не найдена библиотека ',39,'proc_lib.obj',39,0
-err_message_import_0 db 'Ошибка при импорте библиотеки ',39,'proc_lib.obj',39,0
-
 system_dir_1 db '/sys/lib/'
 lib_name_1 db 'libimg.obj',0
-err_message_found_lib_1 db 'Не найдена библиотека ',39,'libimg.obj',39,0
-err_message_import_1 db 'Ошибка при импорте библиотеки ',39,'libimg.obj',39,0
-
 system_dir_2 db '/sys/lib/'
 lib_name_2 db 'buf2d.obj',0
-err_msg_found_lib_2 db 'Не найдена библиотека ',39,'buf2d.obj',39,0
-err_msg_import_2 db 'Ошибка при импорте библиотеки ',39,'buf2d',39,0
-
 system_dir_3 db '/sys/lib/'
 lib_name_3 db 'msgbox.obj',0
-err_msg_found_lib_3 db 'Не найдена библиотека ',39,'msgbox.obj',39,0
-err_msg_import_3 db 'Ошибка при импорте библиотеки ',39,'msgbox',39,0
 
+align 4
 l_libs_start:
-	lib_0 l_libs lib_name_0, sys_path, file_name, system_dir_0,\
-		err_message_found_lib_0, head_f_l, proclib_import,err_message_import_0, head_f_i
-	lib_1 l_libs lib_name_1, sys_path, file_name, system_dir_1,\
-		err_message_found_lib_1, head_f_l, import_libimg, err_message_import_1, head_f_i
-	lib_2 l_libs lib_name_2, sys_path, library_path, system_dir_2,\
-		err_msg_found_lib_2,head_f_l,import_buf2d,err_msg_import_2,head_f_i
-	lib_3 l_libs lib_name_3, sys_path, library_path, system_dir_3,\
-		err_msg_found_lib_3,head_f_l,import_msgbox_lib,err_msg_import_3,head_f_i
+	lib_0 l_libs lib_name_0, file_name, system_dir_0, import_proclib
+	lib_1 l_libs lib_name_1, file_name, system_dir_1, import_libimg
+	lib_2 l_libs lib_name_2, file_name, system_dir_2, import_buf2d
+	lib_3 l_libs lib_name_3, file_name, system_dir_3, import_msgbox_lib
 l_libs_end:
 
 align 4
@@ -1326,7 +1334,7 @@ import_libimg:
 	aimg_draw    db 'img_draw',0
 
 align 4
-proclib_import: ;описание экспортируемых функций
+import_proclib:
 	OpenDialog_Init dd aOpenDialog_Init
 	OpenDialog_Start dd aOpenDialog_Start
 dd 0,0
@@ -1419,13 +1427,6 @@ dd 0,0
 ;       amb_reinit db 'mb_reinit',0
 ;       amb_setfunctions db 'mb_setfunctions',0
 
-mouse_dd dd 0x0
-sc system_colors 
-last_time dd 0
-
-align 16
-procinfo process_information 
-
 align 4
 buf_0: dd 0
 	dw 5 ;+4 left
@@ -1444,6 +1445,7 @@ buf_0z: dd 0
 .color: dd 0 ;+16 color
 	db 32 ;+20 bit in pixel
 
+;текстура 1 (верхняя)
 align 4
 buf_i0: dd 0
 	dw 5 ;+4 left
@@ -1453,6 +1455,7 @@ buf_i0: dd 0
 .color: dd 0 ;+16 color
 	db 24 ;+20 bit in pixel
 
+;текстура 2
 align 4
 buf_i1: dd 0
 	dw 105 ;+4 left
@@ -1462,6 +1465,7 @@ buf_i1: dd 0
 .color: dd 0 ;+16 color
 	db 24 ;+20 bit in pixel
 
+;текстура 3
 align 4
 buf_i2: dd 0
 	dw 205 ;+4 left
@@ -1471,6 +1475,10 @@ buf_i2: dd 0
 .color: dd 0 ;+16 color
 	db 24 ;+20 bit in pixel
 
+;алгоритм создания модели использует 3 сечения: 
+; предыдущее, текущее, последующее (это необходимо для отсеивания вокселей внутри объекта)
+
+;предыдущее сечение
 align 4
 buf_npl_p: dd 0
 	dw 0 ;+4 left
@@ -1480,6 +1488,7 @@ buf_npl_p: dd 0
 .color: dd 0 ;+16 color
 	db 24 ;+20 bit in pixel
 
+;текущее сечение
 align 4
 buf_npl: dd 0
 	dw 5 ;+4 left
@@ -1489,6 +1498,7 @@ buf_npl: dd 0
 .color: dd 0 ;+16 color
 	db 24 ;+20 bit in pixel
 
+;последующее сечение
 align 4
 buf_npl_n: dd 0
 	dw 0 ;+4 left
@@ -1517,14 +1527,17 @@ buf_vox:
 
 align 16
 i_end:
+	procinfo process_information
+	sc system_colors
+	run_file_70 FileInfoBlock
+	mouse_dd dd ?
+	last_time dd ?
 		rb 2048
 	thread:
 		rb 2048
 stacktop:
 	sys_path rb 1024
-	file_name:
-		rb 1024 ;4096 
-	library_path rb 1024
+	file_name rb 2048 ;4096 
 	plugin_path rb 4096
 	openfile_path rb 4096
 	filename_area rb 256

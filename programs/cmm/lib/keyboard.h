@@ -58,12 +58,25 @@
 #define SCAN_CODE_F11   087
 #define SCAN_CODE_F12   088
 
+#define SCAN_CODE_1     002
+#define SCAN_CODE_2     003
+#define SCAN_CODE_3     004
+#define SCAN_CODE_4     005
+#define SCAN_CODE_5     006
+#define SCAN_CODE_6     007
+#define SCAN_CODE_7     008
+#define SCAN_CODE_8     009
+#define SCAN_CODE_9     010
+#define SCAN_CODE_10    011
+
 #define SCAN_CODE_KEY_A 030
 #define SCAN_CODE_KEY_B 048
 #define SCAN_CODE_KEY_C 046
 #define SCAN_CODE_KEY_D 032
 #define SCAN_CODE_KEY_E 018
 #define SCAN_CODE_KEY_F 033
+#define SCAN_CODE_KEY_G 034
+#define SCAN_CODE_KEY_J 036
 #define SCAN_CODE_KEY_H 035
 #define SCAN_CODE_KEY_I 023
 #define SCAN_CODE_KEY_L 038
@@ -77,6 +90,7 @@
 #define SCAN_CODE_KEY_T 020
 #define SCAN_CODE_KEY_U 022
 #define SCAN_CODE_KEY_V 047
+#define SCAN_CODE_KEY_W 017
 #define SCAN_CODE_KEY_X 045 
 #define SCAN_CODE_KEY_Y 021 
 #define SCAN_CODE_KEY_Z 044 
@@ -93,24 +107,6 @@
 #define KEY_SCROLLLOCK 00100000000b
 #define KEY_LWIN       01000000000b
 #define KEY_RWIN       10000000000b
-
-inline fastcall word GetKey()  //+Gluk fix
-{
-		$push edx
-GETKEY:
-		$mov  eax,2
-		$int  0x40
-		$cmp eax,1
-		$jne GETKEYI
-		$mov ah,dh
-		$jmp GETKEYII //jz?
-GETKEYI:
-		$mov dh,ah
-		$jmp GETKEY
-GETKEYII:
-		$pop edx
-		$shr eax,8
-}
 
 :unsigned char key_ascii;
 :dword key_scancode, key_modifier, key_editbox;
@@ -133,12 +129,39 @@ GETKEYII:
 	key_ascii = AH;
 	$shr  eax,16
 	key_scancode = AL;
-	//get alt/shift/ctrl key status
+	key_modifier = GetKeyModifier();
+	EAX = key_editbox;
+}
+
+inline fastcall byte GetKeyScancode()
+{
+	$mov  eax,2
+	$int  0x40
+	$shr  eax,16
+	return AL;
+}
+
+inline fastcall GetKey()
+{
+	$mov  eax,2
+	$int  0x40
+}
+
+// ECX is a mode: 1 - scancodes, 0 - ascii
+inline fastcall SetKeyboardMode(ECX) 
+{
+	$mov  eax,66
+	$mov  ebx,1 
+	$int 0x40	
+}
+
+//get alt/shift/ctrl key status
+inline fastcall dword GetKeyModifier()
+{
 	$mov eax,66
 	$mov ebx,3
 	$int 0x40
 	key_modifier = EAX;
-	EAX = key_editbox;
 }
 
 #endif

@@ -1,10 +1,10 @@
 if tup.getconfig("NO_GCC") ~= "" or tup.getconfig("NO_FASM") ~= "" then return end
 tup.include("../../../../../programs/use_gcc.lua")
+SDK_DIR = "../../.."
 CFLAGS =  "-c -O2 -fno-builtin -fno-ident -fomit-frame-pointer -DMISSING_SYSCALL_NAMES"
-LDFLAGS = "-shared -s -T libcdll.lds --out-implib $(SDK_DIR)/lib/libc.dll.a --image-base 0"
+LDFLAGS = "-shared -s -T libcdll.lds --out-implib " .. SDK_DIR .. "/lib/libc.dll.a --image-base 0"
 -- LDFLAGS = LDFLAGS .. " --output-def libc.orig.def"
 
-SDK_DIR = "../../.."
 
 LIBC_TOPDIR = "."
 LIBC_INCLUDES = "include"
@@ -20,7 +20,7 @@ if TOOLCHAIN_LIBPATH == "" then
   else TOOLCHAIN_LIBPATH="/home/autobuild/tools/win32/mingw32/lib"
   end
 end
-LIBPATH = "-L$(SDK_DIR)/lib"
+LIBPATH = "-L" .. SDK_DIR .. "/lib"
 STATIC_SRCS = {"crt/start.S", "crt/crt2.c", "crt/exit.S"}
 LIBDLL_SRCS = {"crt/dllstart.c", "crt/exit.S", "crt/pseudo-reloc.c", "crt/setjmp.S"}
 LIBCDLL_SRCS = {
@@ -99,10 +99,9 @@ CORE_SRCS = {
   "sys/clock_gettime.c",
   "sys/close.c",
   "sys/conio.c",
-  "sys/create.c",
+  "sys/chdir.c",
+  "sys/getcwd.c",
   "sys/errno.c",
-  "sys/finfo.c",
-  "sys/fsize.c",
   "sys/fstat.c",
   "sys/gettod.c",
   "sys/io.c",
@@ -117,6 +116,7 @@ CORE_SRCS = {
   "sys/unlink.c",
   "sys/write.c",
   "sys/io_alloc.S",
+  "sys/ftruncate.c",
   "time/asctime.c",
   "time/asctime_r.c",
   "time/clock.c",
@@ -165,6 +165,7 @@ STDLIB_SRCS = {
   "gdtoa-hexnan.c",
   "getenv.c",
   "getenv_r.c",
+  "envlock.c",
   "itoa.c",
   "ldiv.c",
   "labs.c",
@@ -306,7 +307,8 @@ STRING_SRCS = {
   "wmemcmp.c",
   "wmemcpy.c",
   "wmemmove.c",
-  "wmemset.c"
+  "wmemset.c",
+  "dirname.c"
 }
 
 STDIO_SRCS = {
@@ -453,7 +455,14 @@ STDIO_SRCS = {
   "wscanf.c",
   "wsetup.c"
 }
-
+POSIX_SRCS = {
+  "opendir.c",
+  "closedir.c",
+  "readdir.c",
+  "seekdir.c",
+  "telldir.c",
+  "rewinddir.c"
+}
 
 MATH_SRCS = {
   "e_acos.c", "e_acosh.c", "e_asin.c", "e_atan2.c", "e_atanh.c", "e_cosh.c", "e_exp.c", "e_fmod.c",
@@ -506,6 +515,7 @@ LIB_SRCS += CORE_SRCS
 LIB_SRCS += prepend("stdio/", STDIO_SRCS)
 LIB_SRCS += prepend("string/", STRING_SRCS)
 LIB_SRCS += prepend("stdlib/", STDLIB_SRCS)
+LIB_SRCS += prepend("posix/", POSIX_SRCS)
 LIB_SRCS += prepend("math/", MATH_SRCS)
 
 ALL_OBJS = {}
@@ -515,7 +525,7 @@ function compile(list)
     if ALL_OBJS[v] then
       -- already compiled
     elseif v:sub(-2) == ".c" or v:sub(-2) == ".S" then
-      ALL_OBJS[v] = tup.rule(v, "kos32-gcc $(CFLAGS) $(DEFINES) $(INCLUDES) -o %o %f", v:sub(1, -3) .. ".o")
+      ALL_OBJS[v] = tup.rule(v, "kos32-gcc ".. CFLAGS .. " " .. DEFINES .. " " .. INCLUDES .. " -o %o %f", v:sub(1, -3) .. ".o")
     elseif v:sub(-4) == ".asm" then
       ALL_OBJS[v] = tup.rule(v, "fasm %f %o", v:sub(1, -5) .. ".obj")
     end
@@ -525,10 +535,10 @@ function compile(list)
 end
 
 LIB_OBJS = compile(LIB_SRCS)
-LIB_OBJS += tup.rule("crt/crtdll.c", "kos32-gcc $(CFLAGS) $(DEFINES) $(INCLUDES) -fno-delete-null-pointer-checks -c %f -o %o","crt/crtdll.o")
-LIB_OBJS += tup.rule("pe/loader.c", "kos32-gcc $(CFLAGS) $(DEFINES) $(INCLUDES) -fno-delete-null-pointer-checks -c %f -o %o", "pe/loader.o")
-LIB_OBJS += tup.rule("reent/renamer.c", "kos32-gcc $(CFLAGS) $(DEFINES) $(INCLUDES) -D_COMPILING_NEWLIB -c %f -o %o", "reent/renamer.o")
-LIB_OBJS += tup.rule("time/strftime.c", "kos32-gcc $(CFLAGS) $(DEFINES) -DMAKE_WCSFTIME $(INCLUDES) -c %f -o %o", "time/wcsftime.o")
+LIB_OBJS += tup.rule("crt/crtdll.c", "kos32-gcc " .. CFLAGS .. " " .. DEFINES .. " " .. INCLUDES .. " -fno-delete-null-pointer-checks -c %f -o %o","crt/crtdll.o")
+LIB_OBJS += tup.rule("pe/loader.c", "kos32-gcc " .. CFLAGS .. " " .. DEFINES .. " " .. INCLUDES .. " -fno-delete-null-pointer-checks -c %f -o %o", "pe/loader.o")
+LIB_OBJS += tup.rule("reent/renamer.c", "kos32-gcc " .. CFLAGS .. " " .. DEFINES .. " " .. INCLUDES .. " -D_COMPILING_NEWLIB -c %f -o %o", "reent/renamer.o")
+LIB_OBJS += tup.rule("time/strftime.c", "kos32-gcc " .. CFLAGS .. " " .. DEFINES .. " -DMAKE_WCSFTIME " .. INCLUDES .. " -c %f -o %o", "time/wcsftime.o")
 
 
 LIBDLL_OBJS = compile(LIBDLL_SRCS)
@@ -541,7 +551,7 @@ vfprintf_extra_objs = {
   {"-DINTEGER_ONLY -DSTRING_ONLY", "stdio/svfiprintf.o"},
 }
 for i,v in ipairs(vfprintf_extra_objs) do
-  LIB_OBJS += tup.rule("stdio/vfprintf.c", "kos32-gcc $(CFLAGS) $(DEFINES) $(INCLUDES) -fshort-enums " .. v[1] .. " -c %f -o %o", v[2])
+  LIB_OBJS += tup.rule("stdio/vfprintf.c", "kos32-gcc " .. CFLAGS .. " " .. DEFINES .. " " .. INCLUDES .. " -fshort-enums " .. v[1] .. " -c %f -o %o", v[2])
 end
 
 vfwprintf_extra_objs = {
@@ -551,7 +561,7 @@ vfwprintf_extra_objs = {
   {"-DINTEGER_ONLY -DSTRING_ONLY", "stdio/svfiwprintf.o"},
 }
 for i,v in ipairs(vfwprintf_extra_objs) do
-  LIB_OBJS += tup.rule("stdio/vfwprintf.c", "kos32-gcc $(CFLAGS) $(DEFINES) $(INCLUDES) -fshort-enums " .. v[1] .. " -c %f -o %o", v[2])
+  LIB_OBJS += tup.rule("stdio/vfwprintf.c", "kos32-gcc " .. CFLAGS .. " " .. DEFINES .. " " .. INCLUDES .. " -fshort-enums " .. v[1] .. " -c %f -o %o", v[2])
 end
 
 
@@ -562,7 +572,7 @@ vfscanf_extra_objs = {
   {"-DINTEGER_ONLY -DSTRING_ONLY", "stdio/svfiscanf.o"},
 }
 for i,v in ipairs(vfscanf_extra_objs) do
-  LIB_OBJS += tup.rule("stdio/vfscanf.c", "kos32-gcc $(CFLAGS) $(DEFINES) $(INCLUDES) " .. v[1] .. " -c %f -o %o", v[2])
+  LIB_OBJS += tup.rule("stdio/vfscanf.c", "kos32-gcc " .. CFLAGS .. " " .. DEFINES .. " " .. INCLUDES .. " " .. v[1] .. " -c %f -o %o", v[2])
 end
 
 vfwscanf_extra_objs = {
@@ -571,7 +581,7 @@ vfwscanf_extra_objs = {
   {"-DINTEGER_ONLY -DSTRING_ONLY", "stdio/svfiwscanf.o"},
 }
 for i,v in ipairs(vfwscanf_extra_objs) do
-  LIB_OBJS += tup.rule("stdio/vfwscanf.c", "kos32-gcc $(CFLAGS) $(DEFINES) $(INCLUDES) " .. v[1] .. " -c %f -o %o", v[2])
+  LIB_OBJS += tup.rule("stdio/vfwscanf.c", "kos32-gcc " .. CFLAGS .. " " .. DEFINES .. " " .. INCLUDES .. " " .. v[1] .. " -c %f -o %o", v[2])
 end
 
 

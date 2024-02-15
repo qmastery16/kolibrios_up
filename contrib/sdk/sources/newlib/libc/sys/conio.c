@@ -1,15 +1,19 @@
+/*
+ * Copyright (C) KolibriOS team 2004-2024. All rights reserved.
+ * Distributed under terms of the GNU General Public License
+*/
+
 #include <_ansi.h>
+#include <stdio.h>
 #include <sys/unistd.h>
 #include "io.h"
+#include <string.h>
 
-void load_libconsole();
-void     __stdcall con_init(unsigned w_w, unsigned w_h, unsigned s_w, unsigned s_h, const char* t);
-void     __stdcall con_exit(char bCloseWindow);
-unsigned __stdcall con_get_flags(void);
-unsigned __stdcall con_set_flags(unsigned new_flags);
-void     __stdcall con_cls(void);
-void     __stdcall con_write_string(const char* string, unsigned length);
-short    __stdcall con_getch2(void);
+extern void load_libconsole();
+extern void  __stdcall con_init(unsigned w_w, unsigned w_h, unsigned s_w, unsigned s_h, const char* t);
+extern void  __stdcall con_exit(char bCloseWindow);
+extern void  __stdcall con_write_string(const char* string, unsigned length);
+extern char* __stdcall con_gets(char*, unsigned);
 
 int __gui_mode;
 
@@ -17,28 +21,10 @@ static int console_read(const char *path, void *buff,
            size_t offset, size_t count, size_t *done)
 {
     char *p = buff;
-    int   cnt = 0;
-    short c;
-    char  ch;
-
-//   __asm__ volatile("int3");
-
-    do
-    {
-        c = con_getch2();
-        ch = (char)c;
-        if(ch != 0)
-        {
-            p[cnt] = ch != 0x0D ? ch : 0x0A;
-            con_write_string(p+cnt, 1);
-            cnt++;
-        }
-    }while(ch != 0x0D);
-
-    *done = cnt;
+    con_gets(p, count+1);
+    *done = strlen(p);
     return 0;
 }
-
 
 static int console_write(const char *path, const void *buff,
                  size_t offset, size_t count, size_t *writes)
@@ -47,7 +33,7 @@ static int console_write(const char *path, const void *buff,
 
     *writes = count;
     return 0;
-};
+}
 
 void __init_conio()
 {
@@ -69,7 +55,3 @@ void __fini_conio()
 {
     con_exit(0);
 }
-
-
-
-

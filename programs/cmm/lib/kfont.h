@@ -21,17 +21,13 @@
 #endif
 
 #ifndef INCLUDE_IO_H
-#include "../lib/io.h"
+#include "../lib/fs.h"
 #endif
 
 #include "../lib/patterns/rgb.h"
 
-
 #define DEFAULT_FONT "/sys/fonts/Tahoma.kf"
-
-#ifndef KFONT_BPP
 #define KFONT_BPP 4
-#endif
 
 int kfont_char_width[255];
 
@@ -62,22 +58,20 @@ int kfont_char_width[255];
 	void ApplySmooth();
 	int WriteIntoWindow();
 	int WriteIntoWindowCenter();
-	void WriteIntoBuffer();
+	dword WriteIntoBuffer();
 	void ShowBuffer();
 	void ShowBufferPart();
 } kfont;
 
 :bool KFONT::init(dword font_path)
 {
-	IO label_io;
+	dword fsize_notused;
 	if(font)free(font);
-	label_io.read(font_path);
+	read_file(font_path, #font_begin, #fsize_notused);
 	if(!EAX) {
-		//debugln(font_path);
-		label_io.run("/sys/@notify", "'Error: KFONT is not loaded.' -E"); 
+		RunProgram("/sys/@notify", "'Error: KFONT is not loaded.' -E"); 
 		return false;
 	}
-	font_begin = label_io.buffer_data;
 	changeSIZE();
 	smooth = true;
 	return true;
@@ -103,12 +97,12 @@ int kfont_char_width[255];
 	return true;
 }
 
-:dword KFONT::getsize(byte fontSizePoints, dword text1)
+:dword KFONT::getsize(byte font_size, dword text1)
 {
 	size.height = size.width = 0;
 	size.offset_x = size.offset_y = -1;
-	if (size.pt != fontSizePoints) {
-		size.pt = fontSizePoints;
+	if (size.pt != font_size) {
+		size.pt = font_size;
 		if(!changeSIZE())return 0;
 	}
 	WHILE(DSBYTE[text1])
@@ -123,7 +117,7 @@ int kfont_char_width[255];
 	return size.width;
 }
 
-//WILL NOT WORK if requested fontSizePoints 
+//WILL NOT WORK if requested font_size 
 //is differ from precalculated kfont_char_width[]
 :int KFONT::get_label_width(dword _label) 
 {
@@ -151,7 +145,7 @@ int kfont_char_width[255];
 	dword tmp, _;
 	byte X;
 	byte chaw_width=0;
-	if(s==32)return width/4;
+	if(s==32)return width/4+1;
 	if(s==9)return width;
 	s = Cp866ToAnsi(s);
 	tmp = block*s << 2 + font;
@@ -242,13 +236,13 @@ inline fastcall dword b32(EAX) { return DSDWORD[EAX]; }
 	}
 }
 
-:void KFONT::WriteIntoBuffer(int x,y,w,h; dword _background, _color; byte fontSizePoints; dword text1)
+:dword KFONT::WriteIntoBuffer(int x,y,w,h; dword _background, _color; byte font_size; dword text1)
 {
 	dword new_raw_size;
 	if(!text1)return;
 	
-	if (size.pt != fontSizePoints) {
-		getsize(fontSizePoints, text1);
+	if (size.pt != font_size) {
+		getsize(font_size, text1);
 		y -= size.offset_y;
 	}
 	color = _color;
@@ -274,37 +268,35 @@ inline fastcall dword b32(EAX) { return DSDWORD[EAX]; }
 		if(bold)x+=math.ceil(size.pt/17);
 		text1++;
 	}
-	return;
+	return x;
 }
 
-:int KFONT::WriteIntoWindow(int x,y; dword _background, _color; byte fontSizePoints; dword text1)
+:int KFONT::WriteIntoWindow(int x,y; dword _background, _color; byte font_size; dword text1)
 {
 	if(!text1)return 0;
-	getsize(fontSizePoints, text1);
+	getsize(font_size, text1);
 	raw_size = NULL;
 	WriteIntoBuffer(0, -size.offset_y, size.width-size.offset_x, 
-		size.height-size.offset_y, _background, _color, fontSizePoints, text1);
+		size.height-size.offset_y, _background, _color, font_size, text1);
 	if (smooth) ApplySmooth();
 	ShowBuffer(x,y);
 	return size.offset_x + size.width;
 }
 
-:int KFONT::WriteIntoWindowCenter(dword x,y,w,h; dword _background, _color; byte fontSizePoints; dword text1)
+:int KFONT::WriteIntoWindowCenter(dword x, _y,w,h, _background, _color; byte font_size; dword text1)
 {
-	getsize(fontSizePoints, text1);
-	return WriteIntoWindow(w-size.width/2+x-1,y, _background, _color, fontSizePoints, text1);
+	getsize(font_size, text1);
+	return WriteIntoWindow(w-size.width/2+x-1, _y, _background, _color, font_size, text1);
 }
 
 :void KFONT::ShowBuffer(dword _x, _y)
 {
-	if (4==KFONT_BPP) PutPaletteImage(raw, size.width, size.height, _x, _y, 32, 0);
-	//if (1==KFONT_BPP) PutPaletteImage(raw, size.width, size.height, _x, _y, 8, #palette);
+	PutPaletteImage(raw, size.width, size.height, _x, _y, 32, 0);
 }
 
 :void KFONT::ShowBufferPart(dword _x, _y, _w, _h, _buf_offset)
 {
-	if (4==KFONT_BPP) PutPaletteImage(_buf_offset * KFONT_BPP + raw, _w, _h, _x, _y, 32, 0);
-	//if (1==KFONT_BPP) PutPaletteImage(_buf_offset * KFONT_BPP + raw, _w, _h, _x, _y, 8, #palette);
+	PutPaletteImage(_buf_offset * KFONT_BPP + raw, _w, _h, _x, _y, 32, 0);
 }
 
 #endif

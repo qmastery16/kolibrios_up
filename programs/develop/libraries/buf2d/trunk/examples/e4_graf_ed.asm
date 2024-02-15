@@ -1,31 +1,27 @@
 use32
-	org 0x0
-	db 'MENUET01' ;идентиф. исполняемого файла всегда 8 байт
-	dd 0x1
-	dd start
-	dd i_end ;размер приложения
-	dd mem,stacktop
-	dd 0,cur_dir_path
+	org 0
+	db 'MENUET01'
+	dd 1,start,i_end,mem,stacktop,0,cur_dir_path
 
+include '../../../../../KOSfuncs.inc'
 include '../../../../../macros.inc'
 include '../../../../../proc32.inc'
-include '../../../../../develop/libraries/box_lib/load_lib.mac'
+include '../../../../../load_lib.mac'
 include '../../../../../dll.inc'
 
-@use_library_mem mem.Alloc,mem.Free,mem.ReAlloc, 0 ;dll.Load
+@use_library mem.Alloc,mem.Free,mem.ReAlloc, 0 ;dll.Load
 
 buf2d_l equ word[edi+4] ;отступ слева
 buf2d_t equ word[edi+6] ;отступ сверху
 
 align 4
 start:
-	load_library vectors_name, cur_dir_path, library_path, system_path, \
-		err_message_found_lib, head_f_l, import_buf2d_lib, err_message_import, head_f_i
+	load_library lib0_name, library_path, system_path, import_buf2d_lib
 	cmp eax,-1
 	jz button.exit
 
-	mcall 40,0x27
-	mcall 48,3,sc,sizeof.system_colors ;получаем системные цвета
+	mcall SF_SET_EVENTS_MASK, 0x27
+	mcall SF_STYLE_SETTINGS, SSF_GET_COLORS,sc,sizeof.system_colors ;получаем системные цвета
 	stdcall [buf2d_create], buf_0 ;создаем буфер
 
 align 4
@@ -34,55 +30,55 @@ red_win:
 
 align 4
 still:
-	mcall 10
-	cmp al,0x1 ;изм. положение окна
+	mcall SF_WAIT_EVENT
+	cmp al,1 ;изм. положение окна
 	jz red_win
-	cmp al,0x2
+	cmp al,2
 	jz key
-	cmp al,0x3
+	cmp al,3
 	jz button
-	cmp al,0x6
+	cmp al,6
 	jz mouse
 	jmp still
 
 align 4
 draw_window:
 	pushad
-	mcall 12,1
+	mcall SF_REDRAW, SSF_BEGIN_DRAW
 
 	mov edx,[sc.work]
 	or  edx,0x33000000
-	mcall 0,(50 shl 16)+500,(30 shl 16)+370,,,caption
+	mcall SF_CREATE_WINDOW, (50 shl 16)+500,(30 shl 16)+370,,,caption
 
 	stdcall [buf2d_draw], buf_0
 
-	mcall 12,2
+	mcall SF_REDRAW, SSF_END_DRAW
 	popad
 	ret
 
 align 4
 key:
-	mcall 2
+	mcall SF_GET_KEY
 ;       cmp ah,27 ;Esc
 ;       je button.exit
 	jmp still
 
 align 4
 button:
-	mcall 17 ;получить код нажатой кнопки
+	mcall SF_GET_BUTTON
 	cmp ah,1
 	jne still
 .exit:
 	stdcall [buf2d_delete],buf_0 ;удаляем буфер
-	mcall -1 ;выход из программы
+	mcall SF_TERMINATE_PROCESS
 
 align 4
 mouse:
 	;обрабатываем окно редактора
-	mcall 37,2 ;get mouse buttons
+	mcall SF_MOUSE_GET, SSF_BUTTON ;get mouse buttons
 	cmp al,1
 	jne @f
-		mcall 37,1 ;get mouse coords
+		mcall SF_MOUSE_GET, SSF_WINDOW_POSITION ;get mouse coords
 		mov ebx,eax
 		shr ebx,16 ;в eax координата миши по оси 'x'
 		and eax,0xffff ;в eax координата миши по оси 'y'
@@ -171,19 +167,12 @@ buf_0:
 
 ;--------------------------------------------------
 system_path db '/sys/lib/'
-vectors_name db 'buf2d.obj',0
-err_message_found_lib db 'Sorry I cannot load library buf2d.obj',0
-head_f_i:
-head_f_l db 'System error',0
-err_message_import db 'Error on load import library buf2d.obj',0
+lib0_name db 'buf2d.obj',0
 ;--------------------------------------------------
 
 i_end: ;конец кода
 	rb 2*4096
 stacktop:
-	cur_dir_path:
-		rb 4096
-	library_path:
-		rb 4096
+	cur_dir_path rb 4096
+	library_path rb 4096
 mem:
-

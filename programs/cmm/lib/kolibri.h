@@ -8,15 +8,21 @@
 #pragma option cri-
 #pragma option -CPA
 #initallvar 0
+
+#ifndef __COFF__
 #jumptomain FALSE
 
 #startaddress 0
 
 #code32 TRUE
 
-char   os_name[8]   = {'M','E','N','U','E','T','0','1'};
+#ifndef ENTRY_POINT
+	#define ENTRY_POINT #______INIT______
+#endif
+
+char   os_name[]    = "MENUET01"n;
 dword  os_version   = 0x00000001;
-dword  start_addr   = #______INIT______;
+dword  start_addr   = ENTRY_POINT;
 dword  final_addr   = #______STOP______+32;
 dword  alloc_mem    = MEMSIZE;
 dword  x86esp_reg   = MEMSIZE;
@@ -24,6 +30,17 @@ dword  I_Param      = #param;
 dword  I_Path       = #program_path;
 char param[4096];
 char program_path[4096];
+#else
+extern dword            __argv;
+extern dword            __path;
+
+dword  I_Param      =   #__argv;
+dword  I_Path       =   #__path;
+
+#define param           __argv
+#define program_path    __path
+#define ______INIT______  start
+#endif
 
 #define bool      int
 
@@ -36,7 +53,6 @@ char program_path[4096];
 #define evReDraw  1
 #define evKey     2
 #define evButton  3
-#define evExit    4
 #define evDesktop 5
 #define evMouse   6
 #define evIPC     7
@@ -47,7 +63,6 @@ char program_path[4096];
 #define EVM_REDRAW                1b
 #define EVM_KEY                  10b
 #define EVM_BUTTON              100b
-#define EVM_EXIT               1000b
 #define EVM_DESKTOPBG         10000b
 #define EVM_MOUSE            100000b
 #define EVM_IPC             1000000b
@@ -72,34 +87,28 @@ char program_path[4096];
 
 inline fastcall dword calc(EAX) { return EAX; }
 
+
 :struct raw_image {
 	dword w, h, data;
 };
 
 //------------------------------------------------------------------------------
-:dword wait_event_code;
 inline fastcall dword WaitEvent()
 {
 	$mov eax,10
 	$int 0x40
-	wait_event_code = EAX;
-	//if(wait_event_code==evMouse) MOUSE.get();
-	//return wait_event_code;
 }
 
 inline fastcall dword CheckEvent()
 {
 	$mov eax,11
 	$int 0x40
-	wait_event_code = EAX;
 }
 
-:dword WaitEventTimeout(dword time)
+inline fastcall dword WaitEventTimeout(EBX)
 {
 	EAX = 23;
-	EBX = time;
 	$int 0x40
-	wait_event_code = EAX;
 } 
  
 inline fastcall dword SetEventMask(EBX)
@@ -120,6 +129,16 @@ inline fastcall word GetButtonID()
 	$mov eax,17
 	$int  0x40
 	$shr eax,8
+}
+
+inline fastcall int GetKernelRev()
+{
+	char buf[16];
+	EAX = 18;
+	EBX = 13;
+	ECX = #buf;
+	$int 0x40
+	EAX = ESDWORD[#buf+5];
 }
 
 inline fastcall dword GetFreeRAM()
@@ -177,21 +196,17 @@ struct proc_info
 	char	rezerv2;
 	dword	adress,use_memory,ID,left,top,width,height;
 	word	status_slot,rezerv3;
-	dword	work_left,work_top,work_width,work_height;
+	dword	cleft,ctop,cwidth,cheight;
 	char	status_window;
-	dword   cwidth,cheight;
-	byte    reserved[1024-71-8];
+	byte    reserved[1024-71];
 };
 
 :void GetProcessInfo(dword _process_struct_pointer, _process_id)
 {
-	skin_height = GetSkinHeight();
 	EAX = 9;
 	EBX = _process_struct_pointer;
 	ECX = _process_id;
 	$int  0x40
-	DSDWORD[EBX+71] = DSDWORD[EBX+42] - 9; //set cwidth
-	DSDWORD[EBX+75] = DSDWORD[EBX+46] - skin_height - 4; //set cheight
 }
 
 inline fastcall int GetPointOwner( EBX, ECX) //ebx=m.x, ecx=m.y
@@ -226,6 +241,13 @@ inline fastcall void ActivateWindow( ECX) //ECX - slot
 	EAX = 18;
 	EBX = 3;
 	$int 0x40
+}
+
+:void ActivateWindow_Self()
+{
+	proc_info Form;
+	GetProcessInfo(#Form, SelfInfo);
+	ActivateWindow(GetProcessSlot(Form.ID));
 }
 
 :void RefreshWindow(dword ID_REFRESH,ID_ACTIVE)
@@ -288,6 +310,7 @@ inline fastcall ExitProcess()
 //------------------------------------------------------------------------------
 
 //eax = ÿçûê ñèñòåìû (1=eng, 2=fi, 3=ger, 4=rus)
+///SYSFUNC DOESN'T WORK!!!  =>  https://bit.ly/2XNdiTD
 #define SYS_LANG_ENG 1
 #define SYS_LANG_FIN 2
 #define SYS_LANG_GER 3
@@ -379,6 +402,7 @@ inline fastcall int TestBit( EAX, CL)
 
 //------------------------------------------------------------------------------
 
+#define ROLLED_UP 0x04
 :void DefineAndDrawWindow(dword _x, _y, _w, _h, _window_type, _bgcolor, _title, _flags)
 {
 	EAX = 12;              // function 12:tell os about windowdraw
@@ -392,7 +416,6 @@ inline fastcall int TestBit( EAX, CL)
 	EDI = _title;
 	ESI = _flags;
 	$int 0x40
-
 
 	EAX = 12;              // function 12:tell os about windowdraw
 	EBX = 2;
@@ -429,12 +452,7 @@ inline fastcall dword SetWindowLayerBehaviour(EDX, ESI)
 
 :void WriteTextB(dword x,y,byte fontType, dword color, str_offset)
 {
-	EAX = 4;
-	EBX = x<<16+y;
-	ECX = fontType<<24+color;
-	EDX = str_offset;
-	ESI = 0;
-	$int 0x40;
+	WriteText(x,y,fontType, color, str_offset);
 	$add ebx, 1<<16
 	$int 0x40
 }
@@ -460,10 +478,10 @@ inline fastcall dword SetWindowLayerBehaviour(EDX, ESI)
 	WriteText(x,y, fontType, color, str_offset);
 }
 
-:void WriteNumber(dword x,y,byte fontType, dword color, count, number_or_offset)
+:void WriteNumber(dword x,y,byte fontType, dword color, flags, number_or_offset)
 {
 	EAX = 47;
-	EBX = count<<16;
+	EBX = flags;
 	ECX = number_or_offset;
 	EDX = x<<16+y;
 	ESI = fontType<<24+color;
@@ -482,7 +500,7 @@ inline fastcall dword SetWindowLayerBehaviour(EDX, ESI)
 :dword GetPixelColorFromScreen(dword _x, _y)
 {
 	EAX = 35;
-	EBX = _y * screen.width + _x;
+	EBX = _y * screen.w + _x;
 	$int 64
 }
 
@@ -513,7 +531,7 @@ inline fastcall dword SetWindowLayerBehaviour(EDX, ESI)
 	$int     64
 }
 
-:void _PutImage(dword x,y, w,h, data_offset)
+:void PutImage(dword x,y, w,h, data_offset)
 {
 	EAX = 7;
 	EBX = data_offset;
@@ -524,6 +542,7 @@ inline fastcall dword SetWindowLayerBehaviour(EDX, ESI)
 
 :void PutPaletteImage(dword inbuf,w,h,x,y,bits,pal)
 {
+	if (h<1) || (w<0) return;
 	EAX = 65;
 	EBX = inbuf;
 	ECX = w<<16+h;
@@ -542,7 +561,6 @@ inline fastcall void PutPixel( EBX,ECX,EDX)
 
 :void DrawBar(dword x,y,w,h,color)
 {
-	if (h<=0) || (h>60000) || (w<=0) || (w>60000) return; //bad boy :)
 	EAX = 13;
 	EBX = x<<16+w;
 	ECX = y<<16+h;
@@ -574,12 +592,12 @@ inline fastcall void PutPixel( EBX,ECX,EDX)
 
 :void DefineDragableWindow(dword _x, _y, _w, _h)
 {
-	DefineAndDrawWindow(_x, _y, _w, _h, 0x41,0x000000,NULL,0b);
+	DefineAndDrawWindow(_x, _y, _w, _h, 0x41,0x000000,EDI,0b);
 }
 
 :void DefineUnDragableWindow(dword _x, _y, _w, _h)
 {
-	DefineAndDrawWindow(_x, _y, _w, _h, 0x01, 0, 0, 0x01fffFFF);
+	DefineAndDrawWindow(_x, _y, _w, _h, 0x01, 0, EDI, 0x01fffFFF);
 }
 
 :void EventDragWindow()
@@ -596,8 +614,8 @@ inline fastcall void PutPixel( EBX,ECX,EDX)
 		{
 			z1 = Form1.left + mouse.x - tmp_x;
 			z2 = Form1.top + mouse.y - tmp_y;
-			if(z1<=10) || (z1>20000) z1=0; else if(z1>screen.width-Form1.width-10)z1=screen.width-Form1.width;
-			if(z2<=10) || (z2>20000) z2=0; else if(z2>screen.height-Form1.height-10)z2=screen.height-Form1.height;
+			if(z1<=10) || (z1>20000) z1=0; else if(z1>screen.w-Form1.width-10)z1=screen.w-Form1.width;
+			if(z2<=10) || (z2>20000) z2=0; else if(z2>screen.h-Form1.height-10)z2=screen.h-Form1.height;
 			MoveSize(z1 , z2, OLD, OLD);
 			draw_window();
 		}
@@ -627,8 +645,7 @@ inline fastcall dword GetStartTime()
 :dword X_EventRedrawWindow,Y_EventRedrawWindow;
 :void _EventRedrawWindow()
 {
-	DefineAndDrawWindow(X_EventRedrawWindow,Y_EventRedrawWindow,1,1,0x34,0xFFFFFF,NULL,0);
-	//pause(10);
+	DefineAndDrawWindow(X_EventRedrawWindow,Y_EventRedrawWindow,1,1,0x34,0xFFFFFF,EDI,0);
 	ExitProcess();
 }
 :char REDRAW_BUFF_EVENT_[4096];
@@ -641,94 +658,32 @@ inline fastcall dword GetStartTime()
 
 :struct _screen
 {
-	dword width,height;
+	dword w,h;
 } screen;
 
-:byte skin_height;
+:byte skin_h;
 
-:void DrawDate(dword x, y, color, in_date)
-{
-	EDI = in_date;
-	EAX = 47;
-	EBX = 2<<16;
-	EDX = x<<16+y;
-	ESI = 0x90<<24+color;
-	ECX = EDI.date.day;
-	$int 0x40;
-	EDX += 20<<16;
-	ECX = EDI.date.month;
-	$int 0x40;
-	EDX += 20<<16;
-	EBX = 4<<16;
-	ECX = EDI.date.year;
-	$int 0x40;
-	DrawBar(x+17,y+10,2,2,color);
-	DrawBar(x+37,y+10,2,2,color);
-}
-
-:void __path_name__(dword BUF,PATH)
-{
-	dword beg = PATH;
-	dword pos = PATH;
-	dword sav = PATH;
-	dword i;
-	while(DSBYTE[pos])
-	{
-		if(DSBYTE[pos]=='/')sav = pos;
-		pos++;
-	}
-	i = sav-beg;
-	while(i)
-	{
-		DSBYTE[BUF] = DSBYTE[beg];
-		beg++;
-		BUF++;
-		i--;
-	}
-	/*while(DSBYTE[beg])
-	{
-		DSBYTE[BUF1] = DSBYTE[beg];
-		beg++;
-		BUF1++;
-	}*/
-	//DSBYTE[BUF1] = 0;
-	DSBYTE[BUF] = 0;
-}
-char __BUF_DIR__[4096];
-:struct SELF
-{
-	dword dir;
-	dword file;
-	dword path;
-} self;
-
-dword __generator;  // random number generator - äëÿ ãåíåðàöèè ñëó÷àéíûõ ÷èñåë
-
-:dword program_path_length;
+dword __generator;  // random number generator init
 
 //The initialization of the initial data before running
-void ______INIT______()
+:void ______INIT______()
 {
-	//if (program_path[0]!='/') I_Path++;
-	
-	self.dir = #__BUF_DIR__;
-	self.file = 0;
-	self.path = I_Path;
-	__path_name__(#__BUF_DIR__,I_Path);
-	
-	skin_height   = GetSkinHeight();
-	screen.width  = GetScreenWidth()+1;
-	screen.height = GetScreenHeight()+1;
-	
-	__generator = GetStartTime();
-	
+	skin_h   = @GetSkinHeight();
+	screen.w  = @GetScreenWidth()+1;
+	screen.h = @GetScreenHeight()+1;
+	__generator = @GetStartTime();
+#ifndef __COFF__	
 	mem_init();
-
-
+#endif
 	main();
-	ExitProcess();
 }
+
+#ifdef __COFF__
+@ void start();
+#undef ______INIT______
+#else
 ______STOP______:
+#endif
 #endif
 
 #ifndef INCLUDE_MEM_H
@@ -737,4 +692,8 @@ ______STOP______:
 
 #ifndef INCLUDE_DEBUG_H
 #include "../lib/debug.h"
+#endif
+
+#ifndef INCLUDE_IPC_H
+#include "../lib/ipc.h"
 #endif

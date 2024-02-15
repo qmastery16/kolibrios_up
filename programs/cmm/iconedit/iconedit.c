@@ -17,13 +17,9 @@
 #include "../lib/obj/box_lib.h"
 
 #include "../lib/patterns/rgb.h"
-#include "../lib/patterns/libimg_load_skin.h"
+#include "../lib/patterns/toolbar_button.h"
 
 #include "colors_mas.h"
-
-#ifndef AUTOBUILD
-#include "lang.h--"
-#endif
 
 //===================================================//
 //                                                   //
@@ -32,26 +28,49 @@
 //===================================================//
 
 #ifdef LANG_RUS
+char edit_menu_items[] = 
+"Вырезать|Ctrl+X
+Копировать|Ctrl+C
+Вставить|Ctrl+V";
 char image_menu_items[] = 
-"Количество использованных цветов
-Заменить все цвета 1 на 2";
+"Посчитать количество уникальных цветов
+Заменить все цвета 1 на 2
+Проверить иконку";
 ?define T_MENU_IMAGE "Иконка"
-?define T_TEST_ICON "Проверить иконку"
-?define T_TITLE "Icon Editor 0.60 Alpha"
+?define T_TEST_ICON "Проверка иконки"
+?define T_TITLE "Редактор иконок 0.70a Beta"
+?define T_UNIC_COLORS_COUNT "'Уникальных цветов: %i.' -I"
+?define T_TOO_BIG_IMAGE_FOR_PREVIEW "'IconEdit
+Изображение слишком большое для предпросмотра!' -tE"
+?define T_ERROR_CROP_TOOL "'Для обрезки изображения вначале нужно выделить область.' -W"
+?define T_ERROR_IMA_ICONEDIT "'Это просто редактор иконок, выбраное
+изображение слишком велико для него!' -E"
 #else
+char edit_menu_items[] = 
+"Cut|Ctrl+X
+Copy|Ctrl+C
+Paste|Ctrl+V";
 char image_menu_items[] = 
-"Count colors used
-Replace all colors equal to 1 by 2";
+"Count unic colors used
+Replace all colors equal to 1 by 2
+Test icon";
 ?define T_MENU_IMAGE "Icon"
 ?define T_TEST_ICON "Test Icon"
-?define T_TITLE "Редактор иконок 0.60 Alpha"
+?define T_TITLE "Icon Editor 0.70 Beta"
+?define T_UNIC_COLORS_COUNT "'Image has %i unique colors.' -I"
+?define T_TOO_BIG_IMAGE_FOR_PREVIEW "'IconEdit
+Image is too big for preview!' -tE"
+?define T_ERROR_CROP_TOOL "'You need to select something before using crop tool.' -W"
+?define T_ERROR_IMA_ICONEDIT "'Hey, this is just an icon editor,
+selected image is too big to open!' -E"
 #endif
 
 
 
-#define TOPBAR_H    24+8
-#define LEFTBAR_W 16+5+5+3+3
 #define PALLETE_SIZE 116
+
+#define TOPBAR_H    24+8
+int leftbar_w;
 
 #define PAL_ITEMS_X_COUNT 13
 #define COLSIZE 18
@@ -61,7 +80,7 @@ Replace all colors equal to 1 by 2";
 #define TO_CANVAS_Y(yval) yval - canvas.y/zoom.value
 
 block canvas = { NULL, NULL, NULL, NULL };
-block wrapper = { LEFTBAR_W, TOPBAR_H, NULL, NULL };
+block wrapper = { 0, TOPBAR_H, NULL, NULL };
 block right_bar = { NULL, 10+TOPBAR_H, RIGHT_BAR_W+10, NULL };
 block image_menu_btn = { NULL, 4, NULL, 22 };
 
@@ -141,35 +160,28 @@ _ActionsHistory actionsHistory;
 //                                                   //
 //===================================================//
 
-libimg_image top_icons;
-libimg_image left_icons;
+libimg_image icons16;
 
 void main()
 {
 	word btn;
 	libimg_image open_image;
-	dword bg_col;
 
-	load_dll(libio,  #libio_init,  1);
 	load_dll(libimg, #libimg_init, 1);
 	load_dll(boxlib, #box_lib_init,0);
 
-	Libimg_LoadImage(#top_icons, "/sys/icons16.png");
-	Libimg_LoadImage(#left_icons, "/sys/icons16.png");
+	icons16.load("/sys/icons16.png");
+	leftbar_w = icons16.w + 16;
 
-	system.color.get();
-	bg_col = system.color.work;
-	if (GrayScaleImage(#bg_col,1,1)<65) bg_dark=true; else bg_dark=false;
+	sc.get();
+	bg_dark = skin_is_dark();
 
-	semi_white = MixColors(system.color.work, 0xFFFfff, bg_dark*90 + 96);
-	Libimg_ReplaceColor(top_icons.image, top_icons.w, top_icons.h, 0xffFFFfff, semi_white);
-	Libimg_ReplaceColor(top_icons.image, top_icons.w, top_icons.h, 0xffCACBD6, MixColors(semi_white, 0, 220));
-
-	Libimg_ReplaceColor(left_icons.image, left_icons.w, left_icons.h, 0xffFFFfff, system.color.work);
-	Libimg_ReplaceColor(left_icons.image, left_icons.w, left_icons.h, 0xffCACBD6, MixColors(system.color.work, 0, 200));
+	semi_white = MixColors(sc.work, 0xFFFfff, bg_dark*90 + 96);
+	icons16.replace_color(0xffFFFfff, sc.work);
+	icons16.replace_color(0xffCACBD6, MixColors(sc.work, 0, 200));
 
 	//fix line and rectandle color for dark skins
-	if (bg_dark) Libimg_ReplaceColor(left_icons.image, left_icons.w, left_icons.h, 0xff545454, 0xffD3D3D4);
+	if (bg_dark) icons16.replace_color(0xff545454, 0xffD3D3D4);
 
 	EventSetActiveColor(1, color1);
 
@@ -178,10 +190,11 @@ void main()
 	}
 	else
 	{
-		Libimg_LoadImage(#open_image, #param);
+		open_image.load(#param);
+		open_image.convert_into(IMAGE_BPP24);
 
 		if (open_image.w*open_image.h>MAX_CELL_SIZE*MAX_CELL_SIZE) {
-			notify("'Hey, this is just an icon editor,\nselected image is too big to open!' -E");
+			notify(T_ERROR_IMA_ICONEDIT);
 			ExitProcess();
 		}
 		else {
@@ -277,21 +290,18 @@ void main()
 		 
 		case evReDraw:
 			Window_CanvasReSize.thread_exists();
-			EventCheckMenuItemSelected();
+			if (CheckActiveProcess(Form.ID)) EventCheckMenuItemSelected();
 			DrawWindow();
 			break;
 	}
 }
 
-void DrawTopPanelButton(dword _event, _hotkey, _x, _icon_n)
+void DrawTopPanelButton1(dword _event, _hotkey, _x, _icon_n)
 {
-	DrawWideRectangle(_x, 4, 22, 22, 3, semi_white);
-	PutPixel(_x,4,system.color.work);
-	PutPixel(_x,4+21,system.color.work);
-	PutPixel(_x+21,4,system.color.work);
-	PutPixel(_x+21,4+21,system.color.work);
-	DefineHiddenButton(_x, 4, 21, 21, button.add(_event));
-	img_draw stdcall(top_icons.image, _x+3, 7, 16, 16, 0, _icon_n*16);
+	#define ISIZE 18
+	#define YPOS 6
+	DefineHiddenButton(_x-4, YPOS-4, ISIZE+7, ISIZE+7, button.add(_event));
+	img_draw stdcall(icons16.image, _x, YPOS, ISIZE, ISIZE, 0, _icon_n*ISIZE);
 	if (_hotkey) key.add_n(_hotkey, _event);
 }
 
@@ -301,21 +311,22 @@ int DrawFlatPanelButton(dword _id, _x, _y, _text)
 	#define P 10
 	int w = strlen(_text)*6 + P + P;
 	DrawBar(_x, _y, w, 22, semi_white);
-	PutPixel(_x,_y,system.color.work);
-	PutPixel(_x,_y+21,system.color.work);
-	PutPixel(_x+w-1,_y,system.color.work);
-	PutPixel(_x+w-1,_y+21,system.color.work);
+	PutPixel(_x,_y,sc.work);
+	PutPixel(_x,_y+21,sc.work);
+	PutPixel(_x+w-1,_y,sc.work);
+	PutPixel(_x+w-1,_y+21,sc.work);
 	DefineHiddenButton(_x, _y, w, 21, _id);
-	WriteText(_x+P, _y+7, 0x80, system.color.work_text, _text);
+	WriteText(_x+P, _y+7, 0x80, sc.work_text, _text);
 	return w;
 }
 
 void DrawLeftPanelButton(dword _event, _hotkey, _y, _icon_n)
 {
 	int x = 5;
-	DrawRectangle(x, _y, 22-1, 22-1, system.color.work);
-	DefineHiddenButton(x, _y, 21, 21, button.add(_event));
-	img_draw stdcall(left_icons.image, x+3, _y+3, 16, 16, 0, _icon_n*16);
+	DrawRectangle(x, _y, icons16.w + 5, icons16.w + 5, sc.work);
+	DefineHiddenButton(x, _y, icons16.w + 5, icons16.w + 5, button.add(_event));
+	img_draw stdcall(icons16.image, x+3, _y+3, icons16.w, 
+		icons16.w, 0, _icon_n*icons16.w);
 	key.add_n(_hotkey, _event);
 }
 void DrawStatusBar()
@@ -329,8 +340,8 @@ void DrawStatusBar()
 		calc(strlen(#param)*8)+6,
 		18,
 		button.add(#EventCanvasResize),
-		system.color.work_button,
-		system.color.work_button_text,
+		sc.button,
+		sc.button_text,
 		#param
 		);
 }
@@ -340,13 +351,15 @@ void DrawWindow()
 {
 	#define GAPH 27
 	#define GAPV 28
+	#define GAP_S 24+7
+	#define GAP_B 24+20
 	#define BLOCK_SPACE 10
 	incn tx;
 	incn ty;
-	system.color.get();
+	sc.get();
 	DefineAndDrawWindow(115+random(100), 50+random(100), 700, 540, 0x73, NULL, T_TITLE, 0);
 	GetProcessInfo(#Form, SelfInfo);
-	if (Form.status_window>2) return;
+	if (Form.status_window&ROLLED_UP) return;
 	if (Form.width  < 560) { MoveSize(OLD,OLD,560,OLD); return; }
 	if (Form.height < 430) { MoveSize(OLD,OLD,OLD,430); return; }
 	button.init(40);
@@ -354,31 +367,29 @@ void DrawWindow()
 
 	right_bar.x = Form.cwidth - right_bar.w;
 	b_color_gradient.x = b_last_colors.x = b_default_palette.x = right_bar.x;
-	DrawBar(0, 0, Form.cwidth, TOPBAR_H-1, system.color.work);
-	DrawBar(0, TOPBAR_H-1, Form.cwidth, 1, system.color.work_graph);
+	DrawBar(0, 0, Form.cwidth, TOPBAR_H-1, sc.work);
+	DrawBar(0, TOPBAR_H-1, Form.cwidth, 1, sc.line);
 
-	tx.n = 5-GAPH;
-	DrawTopPanelButton(#EventCreateNewIcon,  ECTRL + SCAN_CODE_KEY_N, tx.inc(GAPH), 2);
-	DrawTopPanelButton(#EventOpenIcon,       ECTRL + SCAN_CODE_KEY_O, tx.inc(GAPH), 0);
-	DrawTopPanelButton(#EventSaveIconToFile, ECTRL + SCAN_CODE_KEY_S, tx.inc(GAPH), 5);
-	DrawTopPanelButton(#EventMoveLeft,       ECTRL + SCAN_CODE_LEFT, tx.inc(GAPH+BLOCK_SPACE), 30);
-	DrawTopPanelButton(#EventMoveRight,      ECTRL + SCAN_CODE_RIGHT, tx.inc(GAPH), 31);
-	DrawTopPanelButton(#EventMoveUp,         ECTRL + SCAN_CODE_UP, tx.inc(GAPH), 32);
-	DrawTopPanelButton(#EventMoveDown,       ECTRL + SCAN_CODE_DOWN, tx.inc(GAPH), 33);
-	DrawTopPanelButton(#EventFlipHor,        0, tx.inc(GAPH+BLOCK_SPACE), 34);
-	DrawTopPanelButton(#EventFlipVer,        0, tx.inc(GAPH), 35);
-	DrawTopPanelButton(#EventRotateLeft,     ECTRL + SCAN_CODE_KEY_L, tx.inc(GAPH), 37);
-	DrawTopPanelButton(#EventRotateRight,    ECTRL + SCAN_CODE_KEY_R, tx.inc(GAPH), 36);
-	DrawTopPanelButton(#EventTestIcon,       ECTRL + SCAN_CODE_KEY_T, tx.inc(GAPH+BLOCK_SPACE), 12);
-	DrawTopPanelButton(#EventCrop,           0, tx.inc(GAPH+BLOCK_SPACE), 46);
+	DrawTopPanelButton1(#EventCreateNewIcon,  ECTRL + SCAN_CODE_KEY_N, tx.set(7),    2);
+	DrawTopPanelButton1(#EventOpenIcon,       ECTRL + SCAN_CODE_KEY_O, tx.inc(GAP_S), 0);
+	DrawTopPanelButton1(#EventSaveIconToFile, ECTRL + SCAN_CODE_KEY_S, tx.inc(GAP_S), 5);
+	DrawTopPanelButton1(#EventMoveLeft,       ECTRL + SCAN_CODE_LEFT,  tx.inc(GAP_B), 30);
+	DrawTopPanelButton1(#EventMoveRight,      ECTRL + SCAN_CODE_RIGHT, tx.inc(GAP_S), 31);
+	DrawTopPanelButton1(#EventMoveUp,         ECTRL + SCAN_CODE_UP,    tx.inc(GAP_S), 32);
+	DrawTopPanelButton1(#EventMoveDown,       ECTRL + SCAN_CODE_DOWN,  tx.inc(GAP_S), 33);
+	DrawTopPanelButton1(#EventFlipHor,        0, tx.inc(GAP_B), 34);
+	DrawTopPanelButton1(#EventFlipVer,        0, tx.inc(GAP_S), 35);
+	DrawTopPanelButton1(#EventRotateLeft,     ECTRL + SCAN_CODE_KEY_L, tx.inc(GAP_S), 37);
+	DrawTopPanelButton1(#EventRotateRight,    ECTRL + SCAN_CODE_KEY_R, tx.inc(GAP_S), 36);
+	DrawTopPanelButton1(#EventCrop,           0, tx.inc(GAP_B), 46);
 
-	image_menu_btn.x = tx.n;
+	image_menu_btn.x = tx.inc(GAP_B);
 	image_menu_btn.w = DrawFlatPanelButton(button.add(#EventShowImageMenu), image_menu_btn.x, image_menu_btn.y, T_MENU_IMAGE);
 	//tx.inc(image_menu_btn.w + BLOCK_SPACE);
 	
 	DrawEditArea();
 
-	DrawBar(0, TOPBAR_H, LEFTBAR_W-1, Form.cheight - TOPBAR_H, system.color.work);
+	DrawBar(0, TOPBAR_H, leftbar_w-1, Form.cheight - TOPBAR_H, sc.work);
 
 	ty.n = right_bar.y - GAPV - 2;
 
@@ -393,22 +404,23 @@ void DrawWindow()
 	DrawLeftPanelSelection();
 
 	button.add_n(1, #EventExitIconEdit);
+	key.add_n(ECTRL + SCAN_CODE_KEY_T, #EventTestIcon);
 
 	DrawBar(wrapper.x+wrapper.w, TOPBAR_H, Form.cwidth-wrapper.x-wrapper.w,
-		Form.cheight - TOPBAR_H, system.color.work);
+		Form.cheight - TOPBAR_H, sc.work);
 	DrawActiveColor(right_bar.y);
 	DrawColorPallets();
 	DrawPreview();
 
-	DrawBar(LEFTBAR_W-1, wrapper.y + wrapper.h, wrapper.w+1, 
-		Form.cheight - wrapper.y - wrapper.h, system.color.work);
+	DrawBar(leftbar_w-1, wrapper.y + wrapper.h, wrapper.w+1, 
+		Form.cheight - wrapper.y - wrapper.h, sc.work);
 	DrawStatusBar();
 }
 
 void DrawLeftPanelSelection()
 {
-	DrawRectangle3D(5, previousTool*GAPV+right_bar.y-2, 16+3+2, 16+3+2, system.color.work, system.color.work);
-	DrawRectangle3D(5, currentTool*GAPV+right_bar.y-2, 16+3+2, 16+3+2, 0x333333, 0x777777);
+	if (previousTool!=-1) DrawRectangle3D(5, previousTool*GAPV+right_bar.y-2, icons16.w+5, icons16.w+5, sc.work, sc.work);
+	DrawRectangle3D(5, currentTool*GAPV+right_bar.y-2, icons16.w+5, icons16.w+5, 0x333333, 0x777777);
 }
 
 void DrawEditArea()
@@ -417,6 +429,7 @@ void DrawEditArea()
 	int top_side;
 	int left_side;
 
+	wrapper.x = icons16.w + 16;
 	wrapper.w = Form.cwidth - right_bar.w - 10 - wrapper.x;
 	wrapper.h = Form.cheight - TOPBAR_H - 35;
 
@@ -437,7 +450,7 @@ void DrawEditArea()
 	left_side = canvas.x-wrapper.x-1;
 	top_side = canvas.y-wrapper.y-1;
 
-	DrawRectangle(wrapper.x-1, wrapper.y-1, wrapper.w, wrapper.h, system.color.work_graph);
+	DrawRectangle(wrapper.x-1, wrapper.y-1, wrapper.w, wrapper.h, sc.line);
 
 	if (left_side>0)
 	{
@@ -468,7 +481,7 @@ void DrawActiveColor(dword iny)
 	DrawBar(right_bar.x+CELL+5+2, outy+2, CELL-4, CELL-4, color2);
 
 	//sprintf(#param, "%A", color1);
-	//WriteTextWithBg(right_bar.x+30, outy+3, 0xD0, system.color.work_text, #param+4, system.color.work);
+	//WriteTextWithBg(right_bar.x+30, outy+3, 0xD0, sc.work_text, #param+4, sc.work);
 	DrawCurrentColorGradient();
 }
 
@@ -510,7 +523,7 @@ void DrawCurrentColorGradient()
 	for (i=0 ; i<b_color_gradient.w; i++) {
 		DrawBar(b_color_gradient.x+i, b_color_gradient.y, 1, b_color_gradient.h, linear_gradient[i]);		
 	}
-	DrawGradientMarker(old_marker_pos, system.color.work);
+	DrawGradientMarker(old_marker_pos, sc.work);
 	old_marker_pos = DrawGradientMarker(lmax, 0xFFFfff * bg_dark);
 }
 
@@ -576,7 +589,7 @@ void DrawPreview()
 	if (image.columns > right_bar.w) return;
 	if (image.rows > preview_h) return;
 
-	_PutImage(right_bar.w - image.columns / 2 + x - 3,
+	PutImage(right_bar.w - image.columns / 2 + x - 3,
 		preview_h - image.rows / 2 + y, 
 		image.columns, image.rows, image.get_image()
 		);
@@ -584,7 +597,7 @@ void DrawPreview()
 
 dword GetPixelUnderMouse()
 {
-	return GetPixelColorFromScreen(mouse.x + Form.left + 5, mouse.y + Form.top + skin_height);
+	return GetPixelColorFromScreen(mouse.x + Form.left + 5, mouse.y + Form.top + skin_h);
 }
 
 int preview_size = 128;
@@ -593,14 +606,14 @@ void DrawImageWithBg(dword _x, _y, _col_to)
 	_x *= preview_size;
 	_y *= preview_size;
 	DrawWideRectangle(_x,_y, preview_size, preview_size, preview_size-image.columns/2, _col_to);
-	_PutImage(preview_size - image.columns / 2 + _x, preview_size - image.rows / 2 + _y,
+	PutImage(preview_size - image.columns / 2 + _x, preview_size - image.rows / 2 + _y,
 		image.columns, image.rows, image.get_image_with_replaced_color(color2, _col_to));
 }
 
 void ShowWindow_TestIcon()
 {
 	if (image.rows>=preview_size) || (image.columns>=preview_size) {
-		notify("'IconEdit\nImage is too big for preview!' -tE");
+		notify(T_TOO_BIG_IMAGE_FOR_PREVIEW);
 		return;
 	}
 	loop() switch(WaitEvent())
@@ -616,11 +629,11 @@ void ShowWindow_TestIcon()
 		 
 		case evReDraw:
 			DefineAndDrawWindow(Form.left+100, Form.top+100, preview_size*2+9,
-				preview_size*2+skin_height+4, 0x74, NULL, T_TEST_ICON, 0);
+				preview_size*2+skin_h+4, 0x74, NULL, T_TEST_ICON, 0);
 			DrawImageWithBg(0, 0, 0x000000);
 			DrawImageWithBg(1, 0, 0xFFFfff);
 			DrawImageWithBg(0, 1, GetPixelColorFromScreen(0, 0));
-			DrawImageWithBg(1, 1, system.color.work);
+			DrawImageWithBg(1, 1, sc.work);
 			break;
 	}
 }
@@ -642,17 +655,26 @@ void EventOpenIcon()
 	RunProgram("/sys/lod", sprintf(#param, "*png* %s",#program_path));
 }
 
+#ifdef LANG_RUS
+#define TEXT_FILE_SAVED_AS "'Файл сохранен как %s' -O"
+#else
+#define TEXT_FILE_SAVED_AS "'File saved as %s' -O"
+#endif
 void EventSaveIconToFile()
 {
 	int i=0;
 	char save_file_name[4096];
 	char save_path_stable[4096];
+	char save_success_message[4096+200];
 	strcpy(#save_path_stable, "/tmp0/1");
 	do {
 		i++;
-		sprintf(#save_file_name, "%s/saved_icon_%i.png", #save_path_stable, i);
+		sprintf(#save_file_name, "%s/icon_%i.png", #save_path_stable, i);
 	} while (file_exists(#save_file_name));
 	save_image(image.get_image(), image.columns, image.rows, #save_file_name);
+
+	sprintf(#save_success_message, TEXT_FILE_SAVED_AS, #save_file_name);
+	notify(#save_success_message);
 }
 
 void EventCleanCanvas()
@@ -720,26 +742,34 @@ void EventCrop()
 		DrawWindow();
 	}
 	else {
-		notify("'You need to select something before using crop tool.' -W");
+		notify(T_ERROR_CROP_TOOL);
 	}
 }
 
 void EventShowImageMenu()
 {
-	menu.selected = 0;
-	menu.show(Form.left+5 + image_menu_btn.x, 
-		Form.top+skin_height + image_menu_btn.y + image_menu_btn.h,
-		240, 
-		#image_menu_items, 
-		20);
+	open_lmenu(image_menu_btn.x, image_menu_btn.y + image_menu_btn.h, 
+		MENU_TOP_LEFT, NULL, #image_menu_items);
+}
+
+void EventShowEditMenu()
+{
+	open_lmenu(image_menu_btn.x, image_menu_btn.y + image_menu_btn.h, 
+		MENU_TOP_LEFT, NULL, #edit_menu_items);
 }
 
 void EventCheckMenuItemSelected()
 {
-	if (menu.cur_y) {
-		if (20 == menu.cur_y) EventCountColorsUsed();
-		if (21 == menu.cur_y) EventReplaceImageColors(color1, color2);
-		menu.cur_y = 0;
+	switch(get_menu_click()) {
+		case 1: 
+			EventCountColorsUsed();
+			break;
+		case 2: 
+			EventReplaceImageColors(color1, color2);
+			break;
+		case 3: 
+			EventTestIcon();
+			break;
 	}
 }
 
@@ -757,7 +787,7 @@ void EventCountColorsUsed()
 		}
 		if (unic) resi++;
 	}
-	notify( sprintf(#res_str, "'Image has %i unique colors.' -I", resi) );
+	notify( sprintf(#res_str, T_UNIC_COLORS_COUNT, resi) );
 }
 
 void EventReplaceImageColors(dword c1, c2)
@@ -783,14 +813,14 @@ void EventFlipVer() { EventMove(FLIP_VER); }
 void EventRotateLeft() { EventMove(ROTATE_LEFT); }
 void EventRotateRight() { EventMove(ROTATE_RIGHT); }
 
-void EventSelectToolPencil() { setCurrentTool(TOOL_PENCIL); DrawLeftPanelSelection(); }
-void EventSelectToolPick() { setCurrentTool(TOOL_PIPETTE); DrawLeftPanelSelection(); }
-void EventSelectToolFill() { setCurrentTool(TOOL_FILL); DrawLeftPanelSelection(); }
-void EventSelectToolLine() { setCurrentTool(TOOL_LINE); DrawLeftPanelSelection(); }
-void EventSelectToolRect() { setCurrentTool(TOOL_RECT); DrawLeftPanelSelection(); }
-void EventSelectToolBar() { setCurrentTool(TOOL_BAR); DrawLeftPanelSelection(); }
-void EventSelectToolSelect() { setCurrentTool(TOOL_SELECT); DrawLeftPanelSelection(); }
-void EventSelectToolScrCopy() { setCurrentTool(TOOL_SCREEN_COPY); DrawLeftPanelSelection(); }
+void EventSelectToolPencil() { setCurrentTool(TOOL_PENCIL); }
+void EventSelectToolPick() { setCurrentTool(TOOL_PIPETTE); }
+void EventSelectToolFill() { setCurrentTool(TOOL_FILL); }
+void EventSelectToolLine() { setCurrentTool(TOOL_LINE); }
+void EventSelectToolRect() { setCurrentTool(TOOL_RECT); }
+void EventSelectToolBar() { setCurrentTool(TOOL_BAR); }
+void EventSelectToolSelect() { setCurrentTool(TOOL_SELECT); }
+void EventSelectToolScrCopy() { setCurrentTool(TOOL_SCREEN_COPY);  }
 
 char test_icon_stak22[4096];
 

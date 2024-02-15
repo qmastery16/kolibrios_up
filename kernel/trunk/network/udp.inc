@@ -1,11 +1,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                                 ;;
-;; Copyright (C) KolibriOS team 2004-2017. All rights reserved.    ;;
+;; Copyright (C) KolibriOS team 2004-2019. All rights reserved.    ;;
 ;; Distributed under terms of the GNU General Public License       ;;
 ;;                                                                 ;;
 ;;  UDP.INC                                                        ;;
 ;;                                                                 ;;
-;;  Part of the tcp/ip network stack for KolibriOS                 ;;
+;;  Part of the TCP/IP network stack for KolibriOS                 ;;
 ;;                                                                 ;;
 ;;    Written by hidnplayr@kolibrios.org                           ;;
 ;;                                                                 ;;
@@ -14,7 +14,7 @@
 ;;                                                                 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-$Revision: 6911 $
+$Revision: 9739 $
 
 
 struct  UDP_header
@@ -30,8 +30,8 @@ ends
 uglobal
 align 4
 
-        UDP_PACKETS_TX          rd  NET_DEVICES_MAX
-        UDP_PACKETS_RX          rd  NET_DEVICES_MAX
+        UDP_packets_tx          rd  NET_DEVICES_MAX
+        UDP_packets_rx          rd  NET_DEVICES_MAX
 
 endg
 
@@ -44,7 +44,7 @@ endg
 macro   udp_init {
 
         xor     eax, eax
-        mov     edi, UDP_PACKETS_TX
+        mov     edi, UDP_packets_tx
         mov     ecx, 2*NET_DEVICES_MAX
         rep stosd
 }
@@ -188,7 +188,7 @@ udp_input:
         popa
 
   .updatesock:
-        inc     [UDP_PACKETS_RX + edi]
+        inc     [UDP_packets_rx + edi]
 
         movzx   ecx, [esi + UDP_header.Length]
         sub     ecx, sizeof.UDP_header
@@ -286,7 +286,7 @@ udp_output:
         test    eax, eax
         jnz     @f
         call    net_ptr_to_num4
-        inc     [UDP_PACKETS_TX + edi]
+        inc     [UDP_packets_tx + edi]
        @@:
 
         ret
@@ -305,6 +305,7 @@ udp_output:
 ; udp_connect                                                     ;
 ;                                                                 ;
 ;   IN: eax = socket pointer                                      ;
+;       edx = pointer to sockaddr struct                          ;
 ;                                                                 ;
 ;  OUT: eax = 0 on success                                        ;
 ;       eax = -1 on error                                         ;
@@ -325,10 +326,10 @@ udp_connect:
         pop     edx eax
 
 ; Fill in remote port and IP
-        pushw   [edx + 2]
-        pop     [eax + UDP_SOCKET.RemotePort]
+        pushw   [edx + sockaddr.port]
+        popw    [eax + UDP_SOCKET.RemotePort]
 
-        pushd   [edx + 4]
+        pushd   [edx + sockaddr.ip]
         pop     [eax + UDP_SOCKET.RemoteIP]
 
 ; Find route to host
@@ -341,7 +342,7 @@ udp_connect:
         test    eax, eax
         jz      .enoroute
         pop     eax
-        mov     ebx, [NET_DRV_LIST + edi]
+        mov     ebx, [net_device_list + edi]
         mov     [eax + UDP_SOCKET.device], ebx
         mov     [eax + UDP_SOCKET.LocalIP], edx
         popa
@@ -364,6 +365,12 @@ udp_connect:
 
   .enoroute:
         pop     eax
+
+        push    eax
+        lea     ecx, [eax + SOCKET.mutex]
+        call    mutex_unlock
+        pop     eax
+
         popa
         xor     eax, eax
         dec     eax
@@ -420,9 +427,9 @@ udp_api:
         ret
 
   .packets_tx:
-        mov     eax, [UDP_PACKETS_TX + eax]
+        mov     eax, [UDP_packets_tx + eax]
         ret
 
   .packets_rx:
-        mov     eax, [UDP_PACKETS_RX + eax]
+        mov     eax, [UDP_packets_rx + eax]
         ret

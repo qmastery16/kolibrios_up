@@ -5,6 +5,10 @@
 #include "../lib/kolibri.h"
 #endif
 
+#ifdef __COFF__
+extern dword OpenDialog_init;
+extern dword OpenDialog_start;
+#else
 #ifndef INCLUDE_DLL_H
 #include "../lib/dll.h"
 #endif
@@ -18,6 +22,7 @@ $DD 2 dup 0
 
 char aOpenDialog_init[]          = "OpenDialog_init";
 char aOpenDialog_start[]         = "OpenDialog_start";
+#endif
 
 struct opendialog
 {
@@ -41,6 +46,6 @@ struct opendialog
 };
 
 char communication_area_name[] = "FFFFFFFF_open_dialog";
-char open_dialog_path[] = "/rd/1/File managers/opendial";
+char open_dialog_path[] = "/sys/File managers/opendial";
 
 #endif

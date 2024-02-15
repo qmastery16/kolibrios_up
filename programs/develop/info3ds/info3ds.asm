@@ -1,5 +1,5 @@
 use32
-	org 0x0
+	org 0
 	db 'MENUET01' ;идентиф. исполняемого файла всегда 8 байт
 	dd 1, start, i_end, mem, stacktop, file_name, sys_path
 
@@ -10,14 +10,16 @@ include '../../proc32.inc'
 include '../../KOSfuncs.inc'
 include '../../develop/libraries/libs-dev/libimg/libimg.inc'
 include '../../load_img.inc'
+include '../../load_lib.mac'
 include '../../develop/libraries/box_lib/trunk/box_lib.mac'
 include '../../develop/libraries/TinyGL/asm_fork/opengl_const.inc'
 include 'lang.inc'
 include 'info_fun_float.inc'
 include 'info_menu.inc'
 include 'data.inc'
+include 'convert_stl_3ds.inc'
 
-@use_library_mem mem.Alloc,mem.Free,mem.ReAlloc,dll.Load
+@use_library mem.Alloc,mem.Free,mem.ReAlloc,dll.Load
 
 ID_ICON_CHUNK_MAIN equ 0 ;иконка главного блока
 ID_ICON_CHUNK_NOT_FOUND equ 1 ;иконка не известного блока
@@ -70,8 +72,8 @@ start:
 	mov edi,openfile_path
 @@:
 	lodsd
-	cmp eax,0
-	je @f ;выход, если 0
+	or eax,eax
+	jz @f ;выход, если 0
 	stosd
 	jmp @b
 @@:
@@ -137,9 +139,9 @@ start:
 	stdcall [ksubmenu_add], [main_menu], eax
 
 	mov dword[w_scr_t1.type],1
-	stdcall dword[tl_data_init], tree1
+	stdcall [tl_data_init], tree1
 	;системные иконки 16*16 для tree_list
-	load_image_file 'tl_sys_16.png', icon_tl_sys
+	include_image_file 'tl_sys_16.png', icon_tl_sys
 	;если изображение не открылось, то в icon_tl_sys будут
 	;не инициализированные данные, но ошибки не будет, т. к. буфер нужного размера
 	mov eax,dword[icon_tl_sys]
@@ -230,12 +232,12 @@ start:
 	stdcall [glEnable], GL_NORMALIZE ;делам нормали одинаковой величины во избежание артефактов
 	stdcall [glClearColor], [color_bk+8],[color_bk+4],[color_bk],0.0
 	stdcall [glShadeModel], GL_SMOOTH
-	stdcall [gluNewQuadric]
+	call [gluNewQuadric]
 	mov [qObj],eax
 
 	mov eax,dword[ctx1] ;eax -> TinyGLContext.GLContext
 	mov eax,[eax] ;eax -> ZBuffer
-	mov eax,[eax+offs_zbuf_pbuf] ;eax -> ZBuffer.pbuf
+	mov eax,[eax+ZBuffer.pbuf]
 	mov dword[buf_ogl],eax
 
 	;open file from cmd line
@@ -256,8 +258,8 @@ still:
 	@@:
 	sub ebx,eax
 	mcall SF_WAIT_EVENT_TIMEOUT
-	cmp eax,0
-	je timer_funct
+	or eax,eax
+	jz timer_funct
 
 	cmp al,1
 	jne @f
@@ -443,7 +445,7 @@ pushad
 	int 0x40
 
 	mov dword[w_scr_t1.all_redraw],1
-	stdcall [tl_draw],dword tree1
+	stdcall [tl_draw], tree1
 
 	stdcall [buf2d_draw], buf_0
 
@@ -519,10 +521,24 @@ but_open_file:
 	cmp [OpenDialog_data.status],2
 	je .end_open_file
 	;код при удачном открытии диалога
-	jmp @f
+	jmp .end0
 .no_dlg: ;если минуем диалог открытия файла
 		pushad
-	@@:
+		mov esi,openfile_path
+		stdcall str_len,esi
+		add esi,eax
+		@@: ;цикл для поиска начала имени файла
+			dec esi
+			cmp byte[esi],'/'
+			je @f
+			cmp byte[esi],0x5c ;'\'
+			je @f
+			cmp esi,openfile_path
+			jg @b
+		@@:
+		inc esi
+		stdcall [OpenDialog_Set_file_name],OpenDialog_data,esi ;копируем имя файла в диалог сохранения
+	.end0:
     mov [run_file_70.Function], SSF_GET_INFO
     mov [run_file_70.Position], 0
     mov [run_file_70.Flags], 0
@@ -568,7 +584,17 @@ align 4
 init_tree:
 	stdcall [tl_info_clear], tree1 ;очистка списка объектов
 
-	mov esi,dword[open_file_data]
+	mov esi,[open_file_data]
+	stdcall convert_stl_3ds, esi,[open_file_size] ;проверяем файл формата *.stl ?
+	or eax,eax
+	jz @f
+		;если файл в формате *.stl
+		mov [open_file_size],ecx
+		mov esi,eax
+		stdcall mem.Free,[open_file_data]
+		mov [open_file_data],esi
+		mov byte[can_save],1
+	@@:
 	cmp word[esi],CHUNK_MAIN
 	je @f
 		stdcall buf_draw_beg, buf_0
@@ -583,8 +609,8 @@ init_tree:
 	stdcall add_3ds_object, ID_ICON_CHUNK_MAIN,0,dword[esi+2],0
 	call block_children ;вход в дочерний блок
 
-	mov edi,dword[file_3ds.offs]
-	add edi,dword[file_3ds.size]
+	mov edi,[file_3ds.offs]
+	add edi,[file_3ds.size]
 	.cycle_main:
 		cmp dword[level_stack],0
 		jle .end_cycle
@@ -592,7 +618,7 @@ init_tree:
 		cmp esi,edi ;если конец файла
 		jge .end_cycle
 
-		mov edx,dword[esi+2] ;размер блока
+		mov edx,[esi+2] ;размер блока
 		call block_analiz
 		cmp dword[bl_found],0
 		jne @f
@@ -756,9 +782,9 @@ block_children:
 			mov dword[level_stack],FILE_ERROR_CHUNK_SIZE
 			jmp .end_f
 		@@:
-		mov dword[eax],esi ;указатель на начало блока
-		mov ebx,dword[esi+2]
-		mov dword[eax+4],ebx ;размер блока
+		mov [eax],esi ;указатель на начало блока
+		mov ebx,[esi+2]
+		mov [eax+4],ebx ;размер блока
 		add esi,6 ;переходим к данным блока
 		inc dword[level_stack]
 		add eax,8
@@ -815,10 +841,12 @@ popad
 
 ;input:
 ; esi - указатель на анализируемые данные
+; icon - номер иконки
 ; level - уровень вложенности узла
 ; size_bl - размер блока
+; info_bl - строка с описанием блока
 align 4
-proc add_3ds_object, icon:dword,level:dword,size_bl:dword,info_bl:dword
+proc add_3ds_object, icon:dword, level:dword, size_bl:dword, info_bl:dword
 	pushad
 		mov bx,word[icon]
 		shl ebx,16
@@ -830,8 +858,8 @@ proc add_3ds_object, icon:dword,level:dword,size_bl:dword,info_bl:dword
 		mov ecx,dword[size_bl]
 		mov dword[buffer+4],ecx ;размер блока (используется в функции buf_draw_hex_table для рисования линии)
 		mov ecx,dword[bl_found]
-		cmp ecx,0
-		je @f
+		or ecx,ecx
+		jz @f
 			;... здесь нужен другой алгоритм защиты от удаления
 			mov cl,byte[ecx+4]
 		@@:
@@ -842,8 +870,8 @@ proc add_3ds_object, icon:dword,level:dword,size_bl:dword,info_bl:dword
 		mov dword[buffer+list_offs_p_data],ecx
 		stdcall hex_in_str, buffer+list_offs_text,dword[esi+1],2
 		stdcall hex_in_str, buffer+list_offs_text+2,dword[esi],2 ;код 3ds блока
-		cmp ecx,0
-		jne @f
+		or ecx,ecx
+		jnz @f
 			mov byte[buffer+list_offs_text+4],0 ;0 - символ конца строки
 			jmp .no_capt
 		@@:
@@ -880,7 +908,7 @@ endp
 
 align 4
 .str:
-	mov ecx,0x0a
+	mov ecx,10
 	cmp eax,ecx
 	jb @f
 		xor edx,edx
@@ -902,6 +930,7 @@ but_save_file:
 	pushad
 	copy_path open_dialog_name,communication_area_default_path,file_name,0
 	mov [OpenDialog_data.type],1
+	stdcall [OpenDialog_Set_file_ext],OpenDialog_data,Filter.1 ;.3ds
 	stdcall [OpenDialog_Start],OpenDialog_data
 	cmp [OpenDialog_data.status],2
 	je .end_save_file
@@ -1010,19 +1039,21 @@ OpenDialog_data:
 .y_size 		dw 320 ;+52 ; Window y size
 .y_start		dw 10 ;+54 ; Window Y position
 
-default_dir db '/rd/1',0
+default_dir db '/sys',0
 
 communication_area_name:
 	db 'FFFFFFFF_open_dialog',0
 open_dialog_name:
 	db 'opendial',0
 communication_area_default_path:
-	db '/rd/1/File managers/',0
+	db '/sys/File managers/',0
 
 Filter:
 dd Filter.end - Filter.1
 .1:
 db '3DS',0
+db 'STL',0
+.3:
 db 'PNG',0
 .end:
 db 0
@@ -1044,58 +1075,15 @@ lib_name_5 db 'tinygl.obj',0
 system_dir_6 db '/sys/lib/'
 lib_name_6 db 'libini.obj',0
 
-if lang eq ru
-	head_f_i:
-	head_f_l db 'Системная ошибка',0
-	err_msg_found_lib_0 db 'Не найдена библиотека ',39,'proc_lib.obj',39,0
-	err_msg_import_0 db 'Ошибка при импорте библиотеки ',39,'proc_lib.obj',39,0
-	err_msg_found_lib_1 db 'Не найдена библиотека ',39,'libimg.obj',39,0
-	err_msg_import_1 db 'Ошибка при импорте библиотеки ',39,'libimg.obj',39,0
-	err_msg_found_lib_2 db 'Не найдена библиотека ',39,'box_lib.obj',39,0
-	err_msg_import_2 db 'Ошибка при импорте библиотеки ',39,'box_lib',39,0
-	err_msg_found_lib_3 db 'Не найдена библиотека ',39,'buf2d.obj',39,0
-	err_msg_import_3 db 'Ошибка при импорте библиотеки ',39,'buf2d',39,0
-	err_msg_found_lib_4 db 'Не найдена библиотека ',39,'kmenu.obj',39,0
-	err_msg_import_4 db 'Ошибка при импорте библиотеки ',39,'kmenu',39,0
-	err_msg_found_lib_5 db 'Не найдена библиотека ',39,'tinygl.obj',39,0
-	err_msg_import_5 db 'Ошибка при импорте библиотеки ',39,'tinygl',39,0
-	err_msg_found_lib_6 db 'Не найдена библиотека ',39,'libini.obj',39,0
-	err_msg_import_6 db 'Ошибка при импорте библиотеки ',39,'libini',39,0
-else
-	head_f_i:
-	head_f_l db 'System error',0
-	err_msg_found_lib_0 db 'Sorry I cannot found library ',39,'proc_lib.obj',39,0
-	err_msg_import_0 db 'Error on load import library ',39,'proc_lib.obj',39,0
-	err_msg_found_lib_1 db 'Sorry I cannot found library ',39,'libimg.obj',39,0
-	err_msg_import_1 db 'Error on load import library ',39,'libimg.obj',39,0
-	err_msg_found_lib_2 db 'Sorry I cannot found library ',39,'box_lib.obj',39,0
-	err_msg_import_2 db 'Error on load import library ',39,'box_lib.obj',39,0
-	err_msg_found_lib_3 db 'Sorry I cannot found library ',39,'buf2d.obj',39,0
-	err_msg_import_3 db 'Error on load import library ',39,'buf2d.obj',39,0
-	err_msg_found_lib_4 db 'Sorry I cannot found library ',39,'kmenu.obj',39,0
-	err_msg_import_4 db 'Error on load import library ',39,'kmenu.obj',39,0
-	err_msg_found_lib_5 db 'Sorry I cannot found library ',39,'tinygl.obj',39,0
-	err_msg_import_5 db 'Error on load import library ',39,'tinygl',39,0
-	err_msg_found_lib_6 db 'Sorry I cannot found library ',39,'libini.obj',39,0
-	err_msg_import_6 db 'Error on load import library ',39,'libini',39,0
-end if
-
 align 4
 l_libs_start:
-	lib_0 l_libs lib_name_0, sys_path, file_name, system_dir_0,\
-		err_msg_found_lib_0, head_f_l, proclib_import,err_msg_import_0,head_f_i
-	lib_1 l_libs lib_name_1, sys_path, file_name, system_dir_1,\
-		err_msg_found_lib_1, head_f_l, import_libimg, err_msg_import_1,head_f_i
-	lib_2 l_libs lib_name_2, sys_path, file_name,  system_dir_2,\
-		err_msg_found_lib_2, head_f_l, import_box_lib,err_msg_import_2,head_f_i
-	lib_3 l_libs lib_name_3, sys_path, file_name,  system_dir_3,\
-		err_msg_found_lib_3, head_f_l, import_buf2d,  err_msg_import_3,head_f_i
-	lib_4 l_libs lib_name_4, sys_path, file_name,  system_dir_4,\
-		err_msg_found_lib_4, head_f_l, import_libkmenu,err_msg_import_4,head_f_i
-	lib_5 l_libs lib_name_5, sys_path, file_name,  system_dir_5,\
-		err_msg_found_lib_5, head_f_l, import_lib_tinygl,err_msg_import_5,head_f_i
-	lib_6 l_libs lib_name_6, sys_path, file_name,  system_dir_6,\
-		err_msg_found_lib_6, head_f_l, import_libini, err_msg_import_6,head_f_i		
+	lib_0 l_libs lib_name_0, file_name, system_dir_0, import_proclib
+	lib_1 l_libs lib_name_1, file_name, system_dir_1, import_libimg
+	lib_2 l_libs lib_name_2, file_name, system_dir_2, import_box_lib
+	lib_3 l_libs lib_name_3, file_name, system_dir_3, import_buf2d
+	lib_4 l_libs lib_name_4, file_name, system_dir_4, import_libkmenu
+	lib_5 l_libs lib_name_5, file_name, system_dir_5, import_lib_tinygl
+	lib_6 l_libs lib_name_6, file_name, system_dir_6, import_libini	
 l_libs_end:
 
 align 4
@@ -1146,12 +1134,16 @@ import_libimg:
 	aimg_draw    db 'img_draw',0
 
 align 4
-proclib_import: ;описание экспортируемых функций
+import_proclib:
 	OpenDialog_Init dd aOpenDialog_Init
 	OpenDialog_Start dd aOpenDialog_Start
+	OpenDialog_Set_file_name dd aOpenDialog_Set_file_name
+	OpenDialog_Set_file_ext dd aOpenDialog_Set_file_ext
 dd 0,0
 	aOpenDialog_Init db 'OpenDialog_init',0
 	aOpenDialog_Start db 'OpenDialog_start',0
+	aOpenDialog_Set_file_name db 'OpenDialog_set_file_name',0
+	aOpenDialog_Set_file_ext db 'OpenDialog_set_file_ext',0
 
 align 4
 import_buf2d:
@@ -1239,7 +1231,7 @@ import_box_lib:
 
 	dd 0,0
 	sz_init1 db 'lib_init',0
-	sz_edit_box_draw db 'edit_box',0
+	sz_edit_box_draw db 'edit_box_draw',0
 	sz_edit_box_key db 'edit_box_key',0
 	sz_edit_box_mouse db 'edit_box_mouse',0
 	sz_edit_box_set_text db 'edit_box_set_text',0
@@ -1358,9 +1350,6 @@ align 4
 w_scr_t1 scrollbar 16,0, 3,0, 15, 100, 0,0, 0,0,0, 1
 
 align 4
-ctx1 db 28 dup (0) ;TinyGLContext or KOSGLContext
-;sizeof.TinyGLContext = 28
-
 qObj dd 0
 
 light_position dd 0.0, 0.0, -2.0, 1.0 ; Расположение источника [0][1][2]
@@ -1373,13 +1362,14 @@ white_light dd 0.8, 0.8, 0.8, 1.0 ; Цвет и интенсивность освещения, генерируемог
 lmodel_ambient dd 0.3, 0.3, 0.3, 1.0 ; Параметры фонового освещения
 
 if lang eq ru
-capt db 'info 3ds версия 10.12.17',0 ;подпись окна
+capt db 'info 3ds версия 29.09.20',0 ;подпись окна
 else
-capt db 'info 3ds version 10.12.17',0 ;window caption
+capt db 'info 3ds version 29.09.20',0 ;window caption
 end if
 
 align 16
 i_end:
+	ctx1 rb 28 ;sizeof.TinyGLContext = 28
 	procinfo process_information
 	run_file_70 FileInfoBlock
 	sc system_colors

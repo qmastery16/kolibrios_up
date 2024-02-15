@@ -5,7 +5,7 @@
 ;;                                                              ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-$Revision: 6880 $
+$Revision: 9828 $
 
 ; CD external functions
 ;   in:
@@ -56,9 +56,8 @@ reserve_cd:
 ;-----------------------------------------------------------------------------
 reserve_ok2:
         push    eax
-        mov     eax, [CURRENT_TASK]
-        shl     eax, 5
-        mov     eax, [eax+CURRENT_TASK+TASKDATA.pid]
+        mov     eax, [current_slot]
+        mov     eax, [eax + APPDATA.tid]
         mov     [cd_status], eax
         pop     eax
         sti

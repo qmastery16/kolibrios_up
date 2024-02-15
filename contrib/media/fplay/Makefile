@@ -1,6 +1,6 @@
 NAME= Fplay
 
-FASM= fasm.exe
+FASM= fasm
 CC = kos32-gcc
 AR = kos32-ar
 LD = kos32-ld
@@ -55,7 +55,7 @@ $(NAME): $(OBJECTS) Makefile
 
 
 clean: 
-	-rm -f *.o 
+	-rm -f $(OBJECTS)
 
 
 

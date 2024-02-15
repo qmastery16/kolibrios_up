@@ -2,6 +2,7 @@
  *  TCCMEOS.C - KolibriOS/MenuetOS file output for the TinyC Compiler
  *
  *  Copyright (c) 2006 Andrey Khalyavin
+ *  Copyright (c) 2021-2022 Coldy (KX extension)
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -18,6 +19,8 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#include "tcc.h"
+
 typedef struct {
 	char magic[8];
 	int version;
@@ -25,8 +28,8 @@ typedef struct {
 	int image_size;
 	int memory_size;
 	int stack;
-	int params;
 	int argv;
+	int path;
 } IMAGE_MEOS_FILE_HEADER,*PIMAGE_MEOS_FILE_HEADER;
 typedef struct _meos_section_info{
 	int sh_addr;
@@ -35,13 +38,32 @@ typedef struct _meos_section_info{
 	int sec_num;
 	struct _meos_section_info* next;
 } meos_section_info;
+#ifdef TCC_TARGET_KX
+typedef struct {
+	void* data;
+	int	  data_size;
+} kx_import_table;
+#endif
 typedef struct {
 	TCCState* s1;
 	IMAGE_MEOS_FILE_HEADER header;
 	meos_section_info* code_sections;
 	meos_section_info* data_sections;
+#ifdef TCC_TARGET_KX
+	kx_import_table* imp_table;
+#endif
 	meos_section_info* bss_sections;
 } me_info;
+
+#ifdef TCC_TARGET_KX
+	void kx_init(me_info* me);
+	void kx_build_imports(me_info* me);
+  	void kx_check_import_error(int reloc_type, const char* code_base, Elf32_Addr	offset, const char* symbol_name);
+	long kx_get_header_length(me_info* me);
+	void kx_write_header(me_info* me, FILE* f);
+	void kx_write_imports(me_info* me, FILE* f);
+	void kx_free(me_info* me);
+#endif
 
 int tcc_output_dbgme(const char *filename, me_info* me);
 
@@ -91,26 +113,54 @@ void build_reloc(me_info* me)
 			rel=rel_;
 			int type = ELF32_R_TYPE(rel->r_info);
 			rel_=rel+1;
-			if (type != R_386_PC32 && type != R_386_32)
+			if (type != R_386_PC32 && type != R_386_32) {
+				// gcc (and friends) object files is used?
+				tcc_error("unsupported relocation type %d", type);
 				continue;
+			}
 			int sym = ELF32_R_SYM(rel->r_info);
 			if (sym>symtab_section->data_offset/sizeof(Elf32_Sym))
 				continue;
 			Elf32_Sym* esym = ((Elf32_Sym *)symtab_section->data)+sym;
 			int sect=esym->st_shndx;
+      int sh_addr;
 			ss=findsection(me,sect);
+      const char* sym_name = strtab_section->data + esym->st_name;
+			int sym_index;
+			Elf32_Sym* dyn_sym;
+			// Import has more less priority in relation to local symbols
 			if (ss==0)
 			{
-            	const char *sym_name = strtab_section->data + esym->st_name;
-    			tcc_error_noabort("undefined symbol '%s'", sym_name);
-				continue;
+#ifdef TCC_TARGET_KX
+				 sym_index = find_elf_sym(me->s1->dynsymtab_section, sym_name);
+				if (sym_index == 0) {
+#endif
+          tcc_error_noabort("undefined import symbol '%s'", sym_name);
+				  continue;
+#ifdef TCC_TARGET_KX
 			}
+				dyn_sym = &((ElfW(Sym) *)me->s1->dynsymtab_section->data)[sym_index];
+				sh_addr = dyn_sym->st_value;
+				if (sh_addr == 0) {
+					tcc_error_noabort("import symbol '%s' has zero value", sym_name);
+					continue;
+				}
+        
+        // Stop linking if incorrect import
+				kx_check_import_error(type, s->data, rel->r_offset, sym_name);
+#endif
+			}
+			else {
+      if (esym->st_shndx == SHN_UNDEF)
+				tcc_error("unresolved external symbol '%s'", sym_name);
+				sh_addr = ss->sh_addr;
+      }
 			if (rel->r_offset>s->data_size)
 				continue;
 			if (type==R_386_PC32)
-				*(int*)(rel->r_offset+s->data)+=ss->sh_addr+esym->st_value-rel->r_offset-s->sh_addr;
+				*(int*)(rel->r_offset+s->data)+= sh_addr+esym->st_value-rel->r_offset-s->sh_addr;
 			else if (type==R_386_32)
-				*(int*)(rel->r_offset+s->data)+=ss->sh_addr+esym->st_value;
+				*(int*)(rel->r_offset+s->data)+= sh_addr+esym->st_value;
 		}
         rel=rel_;
 		s=s->next;
@@ -165,6 +215,9 @@ void assign_addresses(me_info* me)
 	}
 	int addr;
 	addr=sizeof(IMAGE_MEOS_FILE_HEADER);
+#ifdef TCC_TARGET_KX 
+	addr += kx_get_header_length(me);
+#endif
 	for (si=me->code_sections;si;si=si->next)
 	{
 		si->sh_addr=addr;
@@ -176,6 +229,10 @@ void assign_addresses(me_info* me)
 		addr+=si->data_size;
 	}
 	me->header.image_size=addr;
+#ifdef TCC_TARGET_KX 
+	kx_build_imports(me);
+	addr = me->header.image_size;
+#endif
 	for (si=me->bss_sections;si;si=si->next)
 	{
 		si->sh_addr=addr;
@@ -199,13 +256,10 @@ const char *tcc_get_symbol_name(int st_name)
 	return sym_name;
 }
 
-int tcc_find_symbol_me(me_info* me, const char *sym_name)
+int tcc_find_symbol_me(me_info* me, const char *sym_name, int* addr)
 {
-	int i;
-	int symtab;
-	int strtab;
-	symtab=0;
-	strtab=0;
+	int i, symtab = 0, strtab = 0;
+	*addr = 0;
 	for (i=1;i<me->s1->nb_sections;i++)
 	{
 		Section* s;
@@ -233,7 +287,8 @@ int tcc_find_symbol_me(me_info* me, const char *sym_name)
 	{
 		if (strcmp(name+s->st_name,sym_name)==0)
 		{
-			return s->st_value+findsection(me,s->st_shndx)->sh_addr;
+			*addr = s->st_value+findsection(me,s->st_shndx)->sh_addr;
+			return 1;
 		}
 		s++;
 	}
@@ -250,37 +305,52 @@ int tcc_output_me(TCCState* s1,const char *filename)
     //printf("%d\n",s1->nb_sections);
 	memset(&me,0,sizeof(me));
 	me.s1=s1;
+	tcc_add_runtime(s1);
+#ifdef TCC_TARGET_KX
+	kx_init(&me);
+#endif
 	relocate_common_syms();
 	assign_addresses(&me);
-
+    
 	if (s1->do_debug)
 		tcc_output_dbgme(filename, &me);
 
-	me.header.entry_point=tcc_find_symbol_me(&me,"start");
-	me.header.params= tcc_find_symbol_me(&me,"__argv"); // <--
-	me.header.argv= tcc_find_symbol_me(&me,"__path"); // <--
+	if (!tcc_find_symbol_me(&me, "start",  &me.header.entry_point) |
+	    !tcc_find_symbol_me(&me, "__argv", &me.header.argv) |
+	    !tcc_find_symbol_me(&me, "__path", &me.header.path)) {
+	    exit(1);
+	}
 
-	f=fopen(filename,"wb");
+	if((f=fopen(filename,"wb"))==NULL){
+		tcc_error("could not create '%s': %s", filename, strerror(errno));
+	}
+
     for (i=0;i<8;i++)
         me.header.magic[i]=me_magic[i];
-	/*me.header.magic[0]='M';me.header.magic[1]='E';
-	me.header.magic[2]='N';me.header.magic[3]='U';
-	me.header.magic[4]='E';me.header.magic[5]='T';
-	me.header.magic[6]='0';me.header.magic[7]='1';*/
 	fwrite(&me.header,1,sizeof(IMAGE_MEOS_FILE_HEADER),f);
+#ifdef TCC_TARGET_KX
+	kx_write_header(&me, f);
+#endif
 	meos_section_info* si;
 	for(si=me.code_sections;si;si=si->next)
 		fwrite(si->data,1,si->data_size,f);
 	for (si=me.data_sections;si;si=si->next)
 		fwrite(si->data,1,si->data_size,f);
-	for (si=me.bss_sections;si;si=si->next)
+#ifdef TCC_TARGET_KX	
+	kx_write_imports(&me, f);
+	kx_free(&me);
+#else
+	if (!s1->nobss)
 	{
-    	if (si->data == NULL)
+		for (si=me.bss_sections;si;si=si->next)
 		{
-//         	printf("\nError! BSS data is NULL! size:%i",(int)si->data_size);
-         	si->data = calloc(si->data_size, 1);
-      	}
-		fwrite(si->data, 1, si->data_size, f);
+	    	if (si->data == NULL)
+			{
+	//         	printf("\nError! BSS data is NULL! size:%i",(int)si->data_size);
+	         	si->data = calloc(si->data_size, 1);
+	      	}
+			fwrite(si->data, 1, si->data_size, f);
+		}
 	}
 /*
     if (me.bss_sections) // Siemargl testin, what we lose
@@ -288,11 +358,12 @@ int tcc_output_me(TCCState* s1,const char *filename)
         tcc_error_noabort("We lose .BSS section when linking KOS32 executable");
     }
 */
+#endif
 	fclose(f);
 	return 0;
 }
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(TCC_TARGET_MEOS_LINUX)
 
 static inline int get_current_folder(char* buf, int bufsize){
     register int val;
@@ -423,7 +494,7 @@ int tcc_output_dbgme(const char *filename, me_info* me)
                 strcpy(cur_fun, stabstr_section->data + stab->n_strx);
                 str = strchr(cur_fun, ':');
                 if (str) *str = '\0';
-                cur_fun_addr = tcc_find_symbol_me(me, cur_fun);
+                tcc_find_symbol_me(me, cur_fun, &cur_fun_addr);
                 cur_line = stab->n_desc;
                 fun_flag = 1;
                 //fprintf(fdbg, "0x%X %s() line(%d)\n", cur_fun_addr, cur_fun, cur_line); // commented as conflicted with direct address

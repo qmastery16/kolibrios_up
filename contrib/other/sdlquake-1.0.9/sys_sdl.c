@@ -19,6 +19,11 @@
 #include <sys/mman.h>
 #endif
 
+#ifdef _KOLIBRI
+#include <sys/ksys.h>
+#include <libgen.h>
+#endif
+
 #include "quakedef.h"
 
 qboolean			isDedicated;
@@ -46,11 +51,8 @@ void Sys_Printf (char *fmt, ...)
 	va_start (argptr,fmt);
 	vsprintf (text,fmt,argptr);
 	va_end (argptr);
-#ifdef _KOLIBRI
-	__menuet__debug_out(text);
-#else
+
 	fprintf(stderr, "%s", text);
-#endif
 	
 	//Con_Print (text);
 }
@@ -102,17 +104,11 @@ void Sys_Error (char *error, ...)
     va_start (argptr,error);
     vsprintf (string,error,argptr);
     va_end (argptr);
-#ifdef _KOLIBRI
-	__menuet__debug_out("Error: ");
-	__menuet__debug_out(string);
-	__menuet__debug_out("\n");
-#else
+
 	fprintf(stderr, "Error: %s\n", string);
-#endif
 
 	Host_Shutdown ();
 	exit (1);
-
 } 
 
 void Sys_Warn (char *warning, ...)
@@ -123,12 +119,8 @@ void Sys_Warn (char *warning, ...)
     va_start (argptr,warning);
     vsprintf (string,warning,argptr);
     va_end (argptr);
-#ifdef _KOLIBRI
-	__menuet__debug_out("Warning: ");
-	__menuet__debug_out(string);
-#else
+
 	fprintf(stderr, "Warning: %s", string);
-#endif
 } 
 
 /*
@@ -305,11 +297,11 @@ double Sys_FloatTime (void)
 #if defined(_KOLIBRI)
 	static int starttime = 0;
 
-	if ( ! starttime )
-		__asm__ __volatile__("int $0x40" : "=a"(starttime) : "a"(26), "b"(9));
+	if (!starttime) {
+		starttime = _ksys_get_tick_count();
+	}
 
-        int curtime;
-        __asm__ __volatile__("int $0x40" : "=a"(curtime) : "a"(26), "b"(9));
+	int curtime = _ksys_get_tick_count();
 	return (curtime-starttime)*0.01;
 #elif defined(__WIN32__)
 
@@ -376,7 +368,7 @@ void Sys_LineRefresh(void)
 void Sys_Sleep(void)
 {
 #ifdef _KOLIBRI
-	__menuet__delay100(1);
+	_ksys_delay(1);
 #else
 	SDL_Delay(1);
 #endif
@@ -396,8 +388,7 @@ void moncontrol(int x)
 
 int main (int c, char **v)
 {
-
-	double		time, oldtime, newtime;
+	double time, oldtime, newtime;
 	quakeparms_t parms;
 	extern int vcrFile;
 	extern qboolean recording;
@@ -408,6 +399,8 @@ int main (int c, char **v)
 #ifndef _KOLIBRI
 //	signal(SIGFPE, floating_point_exception_handler);
 	signal(SIGFPE, SIG_IGN);
+#else
+	basedir = dirname(v[0]);
 #endif
 
 	parms.memsize = 8*1024*1024;
@@ -437,7 +430,7 @@ int main (int c, char **v)
             if (time < sys_ticrate.value && (vcrFile == -1 || recording) )
             {
 #ifdef _KOLIBRI
-                __menuet__delay100(1);
+                _ksys_delay(1);
 #else
                 SDL_Delay (1);
 #endif

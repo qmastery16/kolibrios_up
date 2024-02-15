@@ -1,5 +1,6 @@
 #include "kolibri.h"
 #include "string.h"
+#include <stdlib.h>
 
 
 extern char KOL_PATH[256];
@@ -26,10 +27,9 @@ void kol_wnd_define(unsigned x, unsigned y, unsigned w, unsigned h, unsigned cs,
 asm volatile ("int $0x40"::"a"(0), "b"(x*65536+w), "c"(y*65536+h), "d"(cs), "D"(t), "S"(b) );
 }
 
-
-void kol_wnd_move(unsigned x, unsigned y)
+void kol_wnd_change(int new_x, int new_y, int new_w, int new_h)
 {
-asm volatile ("int $0x40"::"a"(67), "b"(x), "c"(y), "d"(-1), "S"(-1));
+    asm volatile("int $0x40" ::"a"(67), "b"(new_x), "c"(new_y), "d"(new_w),"S"(new_h));
 }
 
 
@@ -143,7 +143,12 @@ asm volatile ("int $0x40"::"a"(66), "b"(2));
 
 unsigned kol_btn_get()
 {
-asm volatile ("int $0x40"::"a"(17));
+    unsigned val;
+    asm volatile(
+        "int $0x40"
+        : "=a"(val)
+        : "a"(17));
+    return val >> 8;
 }
 
 
@@ -436,10 +441,74 @@ int kol_clip_set(int n, char buffer[])
 asm volatile ("int $0x40"::"a"(54), "b"(2), "c"(n), "d"(buffer));
 }
 
-
 int kos_random(int num) 
 {
 	srand(kol_time_tick());
 	return rand() % num;
 }
 
+int kos_get_mouse_wheels(void)
+{
+    int val;
+    asm ("int $0x40":"=a"(val):"a"(37),"b"(7));
+    return val;
+};
+
+
+struct blit_call
+{
+   int dstx;       
+   int dsty;
+   int w;
+   int h;
+
+   int srcx;
+   int srcy;
+   int srcw;
+   int srch;
+
+   unsigned char *d;
+   int   stride;
+};
+
+void kos_blit(int dstx, int dsty, int w, int h, int srcx, 
+	int srcy,int srcw, int srch, int stride, char *d)
+{
+	volatile struct blit_call image;
+	image.dstx=dstx;
+	image.dsty=dsty;
+	image.w=w;
+	image.h=h;
+	image.srcx=srcx;
+	image.srcy=srcy;
+	image.srcw=srcw;
+	image.srch=srch;
+	image.stride=stride;
+	image.d=d;
+	asm("int $0x40"::"a"(73),"b"(0),"c"(&image));
+	
+}
+
+void kos_text(int x, int y, int color, const char* text, int len)
+{
+	asm volatile ("int $0x40"::"a"(4),"b"((x<<16) | y),"c"(color),"d"((unsigned long)text),"S"(len));
+};
+
+void kos_screen_max(int* x, int* y)
+{
+	unsigned long v;
+    __asm__ __volatile__(
+    "int $0x40"
+    :"=a"(v)
+    :"a"(14));
+    
+    if(x) *x = v >> 16;
+	if(y) *y = v & 0xFFFF;
+};
+
+int kos_get_key()
+{
+	unsigned short __ret;
+	asm volatile("int $0x40":"=a"(__ret):"0"(2));
+	if(!(__ret & 0xFF)) return (__ret>>8)&0xFF; else return 0;
+}

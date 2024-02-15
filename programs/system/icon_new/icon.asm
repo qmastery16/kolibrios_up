@@ -1,5 +1,5 @@
-ICON_STRIP	equ '/rd/1/icons32.png'
-ICON_INI	equ '/rd/1/settings/icon.ini'
+ICON_STRIP	equ '/sys/icons32.png'
+ICON_INI	equ '/sys/settings/icon.ini'
 ICON_SIZE	equ 68	  ;размер области для иконки с надписью
 IMG_SIZE	equ 32	  ;размер иконок
 TEXT_BOTTOM_Y	equ 14	  ;отступ по Y текста от низа иконки
@@ -55,6 +55,8 @@ START:		; start of execution
 	stdcall dll.Load,IMPORTS
 	test	eax,eax
 	jnz	ErrLoadLibs
+
+	mcall   30,1,curpath
 
 ; unpack deflate
 	mov	eax,[unpack_DeflateUnpack2]
@@ -193,13 +195,27 @@ MSGMouse:
 	mov	[MouseY],ecx
 	mov	[MouseX],ebx
 
+MOUSE_STATE_LMB_HOLD = $00000001
+MOUSE_STATE_RMB_HOLD = $00000002
+MOUSE_EVENT_LMB_DOWN = $00000100
+MOUSE_EVENT_RMB_DOWN = $00000200
 
-	mcall	37,2
-	test	al,001b
-	jnz	LButtonPress
-	test	al,010b
-	jnz	RButtonPress
-	jmp	messages
+	mcall 37,3
+;check LMB is pressed
+	test  eax, MOUSE_STATE_LMB_HOLD
+	jz    @f
+	test  eax, MOUSE_EVENT_LMB_DOWN
+	jz    @f
+	jmp   LButtonPress
+@@:
+;check RMB is pressed
+	test  eax, MOUSE_STATE_RMB_HOLD
+	jz    @f
+	test  eax, MOUSE_EVENT_RMB_DOWN
+	jz    @f
+	jmp	  RButtonPress
+@@:
+	jmp	  messages
 
 ErrLoadLibs:
 	;dps     'Не удалось загрузить необходимые библиотеки'
@@ -1031,7 +1047,7 @@ DlgAddActiv	dd 0
 
 IconIni 	db ICON_INI,0
 
-pthNotify	db '/rd/1/@notify',0
+pthNotify	db '/sys/@notify',0
 
 keyName 	db 'name',0
 keyPath 	db 'path',0
@@ -1058,7 +1074,7 @@ import	archiver,\
 	unpack_DeflateUnpack2	,'deflate_unpack2'
 
 import	box_lib,\
-	edit_box_draw		,'edit_box',\
+	edit_box_draw		,'edit_box_draw',\
 	edit_box_key		,'edit_box_key',\
 	edit_box_mouse		,'edit_box_mouse',\
 	scrollbar_h_draw	,'scrollbar_h_draw',\
@@ -1095,6 +1111,8 @@ else
 end if
 
 secRButt	db 'rbmenu',0
+
+curpath     db '/sys',0
 
 PredItem	dd -1
 

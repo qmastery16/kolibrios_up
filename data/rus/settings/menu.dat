@@ -1,147 +1,126 @@
-#0    **** Главное меню ****
-Игровой центр             /sys/allgames
-Демки              >      /@1
-Графика            >      /@3
-Мультимедиа        >      /@4
-Эмуляторы          >      /@18
-Разработка         >      /@5
-Система            >      /@7
-Обработка данных   >      /@13
-Сеть               >      /@14
-Разное             >      /@17
-Документация              /sys/docpack
-Запуск программы          /sys/run
-Завершение работы         /sys/end
-#1    **** Демки ****
-Трёхмерные         >      /@2
-Кружок                    /sys/demos/circle
-Фрактал Мандельброта      /sys/demos/tinyfrac
-Цвета                     /sys/demos/colorref
-Глаза                     /sys/demos/eyes
-Труба                     /sys/demos/tube
-Plasma                    /sys/demos/plasma
-Moveback                  /sys/demos/movback
-Life                      /sys/demos/life2
-TranTest                  /sys/demos/trantest
-Паутинка                  /sys/demos/web
-Фейерверк                 /sys/demos/firework
-UnvWater                  /sys/demos/unvwater
-#2    **** Демки -> 3D ****
-Скринсейвер               /sys/3d/crownscr
-3D-Лабиринт               /sys/3d/free3d04
-3D-Куб                    /sys/3d/3dcube2
-Ray tracing               /sys/3d/ray
-Просмотрщик 3DS           /sys/3d/view3ds
-Шестерёнки                /sys/3d/gears
-FlatWave                  /sys/3d/flatwav
-3D-Волны                  /sys/3d/3dwav
-#3    **** Графика ****
-Просмотр фото KIV         /sys/media/kiv
-Просмотр фото zSea        /kolibrios/media/zsea/zsea
-Редактор Animage          /sys/media/animage
-Наложение фильтров        /sys/media/imgf/imgf
-Палитра                   /sys/media/palitra
-#4    **** Мультимедиа ****
-Аудиоплеер Pixie          /sys/media/pixie/pixie
-Аудиоплеер AC97SND        /sys/media/ac97snd
-Видеоплеер Fplay          /kolibrios/media/fplay
-Midi-плеер                /sys/media/midamp
-#5    **** Разработка ****
-Примеры            >      /@6
-Упаковщик KPack           /sys/kpack
-Flat Assembler            /sys/develop/fasm
-Доска отладки             /sys/develop/board
-Diff tool                 /sys/develop/diff
-Отладчик                  /sys/develop/mtdbg
-Пипетка                   /sys/pipetka
-Hex2Dec2Bin               /sys/develop/h2d2b
-Таблица символов          /sys/ASCIIVju
-ASCII-коды                /sys/develop/keyascii
-SCAN-коды                 /sys/develop/scancode
-#6    **** Разработка -> Примеры ****
-Потоки                    /sys/develop/thread
-Color Slider              /sys/demos/cslide
-Консольный пример 1       /sys/develop/testcon2
-Консольный пример 2       /sys/develop/test_gets
-Окна сообщений            /sys/demos/use_mb
-#7    **** Система ****
-Настройки          >      /@8
-Системные сенсоры  >      /@9
-Работа с файлами   >      /@10
-Тестирование       >      /@11
-Спец. возможности  >      /@12
-Календарь                 /sys/calendar
-Доска отладки             /sys/develop/board
-Буфер обмена              /sys/develop/clipview
-Терминал                  /sys/terminal
-#8    **** Система -> Настройки ****
-Устройства                /sys/setup
-Установить фон            /sys/media/palitra
-Стиль окон                /sys/skincfg
-Горячие клавиши           /sys/mykey
-Видеорежим для ATI        /sys/vmode
-#9    **** Система -> Сенсоры ****
-Диспетчер процессов       /sys/cpu
-PCI-устройства            /sys/pcidev
-CPUID                     /sys/cpuid
-GHOST Monitor             /sys/gmon
-K. Bus disconnected       /sys/kbd
-HDD информер              /sys/hdd_info
-#10    **** Система -> Работа с файлами ****
-KFAR                      /sys/File Managers/kfar
-fNav                      /sys/File Managers/fNav/fNav
-KFM                       /sys/File Managers/kfm
-Eolite                    /sys/File Managers/Eolite
-Виртуальные диски         /sys/tmpdisk
-Консоль SHELL             /sys/shell
-Сохранение образа         /sys/rdsave
-#11   **** Система -> Тестирование ****
-Тест защиты               /sys/test
-Тест монитора             /sys/disptest
-Графический бенчмарк      /sys/mgb
-FSPEED скорость ФС        /sys/fspeed
-#12   **** Система -> Спец.возможности ****
-Экранная лупа             /sys/magnify
-Экранная клавиатура       /sys/zkey
-#13    **** Обработка данных ****
-Калькулятор               /sys/calc
-Редактор Tinypad          /sys/tinypad
-Редактор TextEdit         /sys/develop/t_edit
-Табличный процессор       /sys/table
-Построение графиков       /sys/graph
-HEX-редактор              /sys/develop/heed
-Разархиватор Unz          /sys/unz
-#14    **** Сеть ****
-Серверы            >      /@15
-Клиенты            >      /@16
-Настройки сети            /sys/network/netcfg
-Статус подключения        /sys/network/netstat
-#15   **** Сеть -> Серверы ****
-FTP daemon                /sys/network/ftpd
-#16   **** Сеть -> Клиенты ****
-IRC клиент                /sys/network/ircc
-FTP клиент                /sys/network/ftpc
-TFTP клиент               /sys/network/tftpc
-Ping                      /sys/network/ping
-Telnet                    /sys/network/telnet
-Synergy клиент            /sys/network/synergyc
-DNS lookup                /sys/network/nslookup
-VNC Клиент                /sys/network/vncc
-Интернет загрузчик        /sys/network/downloader
-Текстовый браузер         /sys/network/webview
-#17   **** Разное ****
-Создание скриншотов       /sys/scrshoot
-Аналоговые часы           /sys/demos/aclock
-Просмотр RTF              /sys/rtfread
-Таблица Менделеева        /sys/period
-Тренажёр KJ|ABuIIIA       /sys/games/klavisha
-Бинарные часы             /sys/demos/bcdclk
-Таймер                    /sys/demos/timer
-#18    **** Эмуляторы ****
-DOSBox DOS Emulator       /kolibrios/emul/DosBox/dosbox
-e80 (ZX Spectrum)         /kolibrios/emul/e80/e80
-FCE Ultra - NES           /kolibrios/emul/fceu/fce
-Gameboy Color             /kolibrios/emul/gameboy
-ScummVM (adventure)       /kolibrios/emul/scummvm
-ZSNES Super Nintendo      /kolibrios/emul/zsnes
+#0 **** MAIN
+58 Приветствие          |welcome.htm
+00 2D Демки           > |@1
+00 3D Демки           > |@2
+00 Графика            > |@3
+00 Звук и видео       > |@4
+00 Разработка         > |@5
+00 Система            > |@7
+00 Офис               > |@10
+00 Сеть               > |@11
+00 Разное             > |@14
+23 Игровой центр        |allgames
+60 Системная панель     |syspanel
+18 Документация         |docpack
+53 Запуск программы     |run
+04 Завершение работы    |end
+#1 **** 2D Демки
+16 Фрактал Мандельброта |demos/tinyfrac
+16 Глаза                |demos/eyes
+16 Труба                |demos/tube
+16 Plasma               |demos/plasma
+16 Спираль              |demos/spiral
+16 Moveback             |demos/movback
+16 TranTest             |demos/trantest
+16 Паутинка             |demos/web
+16 Фейерверк            |demos/firework
+16 UnvWater             |demos/unvwater
+16 Buddhabrot           |demos/budhbrot
+#2 **** 3D
+15 Скринсейвер          |3d/crownscr
+15 3D-Лабиринт          |3d/free3d04
+15 3D-Куб               |3d/3dcube2
+15 Трассировка лучей    |3d/ray
+15 Просмотрщик 3DS      |3d/view3ds
+15 Шестерёнки           |3d/gears
+15 3D-Волны             |3d/3dwav
+#3 **** Графика
+06 Просмотр фото KIV    |media/kiv
+06 Просмотр фото zSea   |/kolibrios/media/zsea/zsea
+38 Редактор Animage     |media/animage
+38 Редактор иконок      |media/iconedit
+40 Наложение фильтров   |media/imgf/imgf
+52 Палитра              |media/palitra
+39 Пипетка              |develop/pipet
+#4 **** Звук и видео
+53 Аудиоплеер Pixie     |media/pixie
+07 Midi-плеер           |media/midamp
+22 Детское пианино      |media/piano
+11 Видеоплеер Fplay   * |/kolibrios/media/fplay
+#5 **** Разработка
+54 Flat Assembler       |develop/fasm
+27 Example.asm          |example.asm
+09 Упаковщик KPack      |kpack
+49 Отладчик             |develop/mtdbg
+13 Доска отладки        |develop/board
+16 HEX-редактор         |develop/heed
+20 Diff tool            |develop/diff
+52 Shared resources     |/sys/@reshare
+34 Hex2Dec2Bin          |develop/h2d2b
+59 Таблица символов     |develop/ASCIIVju
+59 ASCII-коды           |develop/keyascii
+59 SCAN-коды            |develop/scancode
+#6 **** Эмуляторы
+24 DOSBox             * |/kolibrios/emul/DosBox/dosbox
+16 e80 (ZX Spectrum)  * |/kolibrios/emul/e80/e80
+23 FCE Ultra (NES)    * |/kolibrios/emul/fceu/fceu
+23 DGEN (Sega)        * |/kolibrios/emul/dgen/dgen
+23 Gameboy Color      * |/kolibrios/emul/gameboy
+23 ZSNES              * |/kolibrios/emul/zsnes/zsnes
+16 ScummVM            * |/kolibrios/emul/scummvm
+#7 **** Система
+00 Файловые менеджеры > |@8
+00 Спец. возможности  > |@9
+62 Календарь            |calendar
+51 Виртуальные диски    |tmpdisk
+24 Терминал             |terminal
+24 Консоль SHELL        |shell
+05 Сохранение образа    |rdsave
+33 Онлайн обновление  * |/kolibrios/utils/osupdate
+#8 **** Система > ФМ
+50 Eolite               |File Managers/Eolite
+05 KFM2                 |File Managers/kfm2
+64 KFAR                 |File Managers/kfar
+20 fNav               * |/kolibrios/utils/fNav/fNav
+65 NDN                * |/kolibrios/utils/ndn/ndn
+05 Classic KFM        * |/kolibrios/utils/kfm/kfm
+#9 **** Система > Спец.возможности
+49 Экранная лупа        |magnify
+59 Экранная клавиатура  |zkey
+#10 **** Офис
+16 Калькулятор          |calc
+03 Редактор Tinypad     |tinypad
+28 Редактор CodeEdit    |develop/cedit
+21 Табличный процессор  |table
+47 Построение графиков  |graph
+03 Просмотр RTF         |rtfread
+#11 **** Сеть
+00 Серверы            > |@12
+00 Клиенты            > |@13
+25 Настройки сети       |network/netcfg
+25 Статус подключения   |network/netstat
+#12 **** Сеть > Серверы
+24 FTP daemon           |network/ftpd
+#13 **** Сеть > Клиенты
+13 IRC клиент           |network/ircc
+20 FTP клиент           |network/ftpc
+20 TFTP клиент          |network/tftpc
+24 Ping                 |network/ping
+24 Telnet               |network/telnet
+24 Synergy клиент       |network/synergyc
+24 DNS lookup           |network/nslookup
+61 VNC Клиент           |network/vncc
+33 Интернет загрузчик   |network/downloader
+12 Браузер WebView      |network/webview
+#14 **** Разное
+00 Эмуляторы*         > |@6
+45 Создание скриншотов  |scrshoot
+45 Простой скриншотер   |easyshot
+29 FB2 Читалка          |fb2read
+16 Аналоговые часы      |aclock
+21 Таблица Менделеева   |period
+59 Тренажёр KJ|ABuIIIA  |games/klavisha
+16 Бинарные часы        |demos/bcdclk
+53 Таймер               |timer
+09 Разархиватор Unz     |unz
 ##

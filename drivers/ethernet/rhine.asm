@@ -1,6 +1,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                                 ;;
-;; Copyright (C) KolibriOS team 2010-2015. All rights reserved.    ;;
+;; Copyright (C) KolibriOS team 2010-2021. All rights reserved.    ;;
 ;; Distributed under terms of the GNU General Public License       ;;
 ;;                                                                 ;;
 ;;  rhine.asm                                                      ;;
@@ -21,6 +21,8 @@
 ;;                                                                 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+; TODO: test for RX-overrun
+
 format PE DLL native
 entry START
 
@@ -33,8 +35,8 @@ entry START
         __DEBUG__               = 1
         __DEBUG_LEVEL__         = 2     ; 1 = all, 2 = errors only
 
-        TX_RING_SIZE            = 4
-        RX_RING_SIZE            = 4
+        TX_RING_SIZE            = 32
+        RX_RING_SIZE            = 32
 
         ; max time out delay time
         W_MAX_TIMEOUT           = 0x0FFF
@@ -508,7 +510,8 @@ struct  device          ETH_DEVICE
         pci_bus         dd ?
         revision        db ?
         irq_line        db ?
-        chip_id         dw ?
+        chip_vid        dw ?
+        chip_did        dw ?
 
         cur_rx          dw ?
         cur_tx          dw ?
@@ -704,17 +707,18 @@ probe:
         invoke  PciWrite32, [ebx + device.pci_bus], [ebx + device.pci_dev], PCI_header00.command, eax
 
 ; get device id
-        invoke  PciRead16, [ebx + device.pci_bus], [ebx + device.pci_dev], PCI_header00.device_id
-        mov     [ebx + device.chip_id], ax
+        invoke  PciRead32, [ebx + device.pci_bus], [ebx + device.pci_dev], PCI_header00.vendor_id
+        mov     dword[ebx + device.chip_vid], eax
 
         mov     esi, chiplist
   .loop:
-        cmp     word[esi+2], ax
+        cmp     dword[esi], eax
         je      .got_it
-        add     esi, 8
-        cmp     esi, chiplist + 6*8
-        jbe     .loop
-        DEBUGF  2, "Unknown chip: 0x%x, continuing anyway\n", ax
+        add     esi, 2*4
+        cmp     dword[esi], 0
+        jne     .loop
+        DEBUGF  2, "Unknown chip: 0x%x, continuing anyway\n", eax
+        mov     [ebx + device.name], my_service
         jmp     .done
   .got_it:
         mov     eax, dword[esi+4]
@@ -733,7 +737,7 @@ probe:
         cmp     al, 0x40
         jb      .below_x40
 
-        mov     ax, [ebx + device.chip_id]
+        mov     ax, [ebx + device.chip_did]
         DEBUGF  1, "Enabling Sticky Bit Workaround for Chip_id: 0x%x\n", ax
 
         ; clear sticky bit before reset & read ethernet address
@@ -890,7 +894,7 @@ end if
     @@:
 
 ; set MII 10 FULL ON, only apply in vt3043
-        cmp     [ebx + device.chip_id], 0x3043
+        cmp     [ebx + device.chip_did], 0x3043
         jne     @f
         stdcall WriteMII, 0x17, 1 shl 1, 1
     @@:
@@ -1405,13 +1409,13 @@ read_mac:
 ;;                                         ;;
 ;; In: buffer pointer in [esp+4]           ;;
 ;;     pointer to device structure in ebx  ;;
+;; Out: eax = 0 on success                 ;;
 ;;                                         ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-align 4
+align 16
 proc transmit stdcall bufferptr
 
-        pushf
-        cli
+        spin_lock_irqsave
 
         mov     esi, [bufferptr]
         DEBUGF  1,"Transmitting packet, buffer:%x, size:%u\n", [bufferptr], [esi + NET_BUFF.length]
@@ -1422,10 +1426,11 @@ proc transmit stdcall bufferptr
         [eax+13]:2,[eax+12]:2
 
         cmp     [esi + NET_BUFF.length], 1514
-        ja      .fail
+        ja      .error
         cmp     [esi + NET_BUFF.length], 60
-        jb      .fail
+        jb      .error
 
+; Program the descriptor
         movzx   eax, [ebx + device.cur_tx]
         mov     ecx, sizeof.tx_head
         mul     ecx
@@ -1433,7 +1438,7 @@ proc transmit stdcall bufferptr
         add     edi, eax
 
         cmp     [edi + tx_head.buff_addr_virt], 0
-        jne     .fail
+        jne     .overrun
 
         mov     eax, esi
         mov     [edi + tx_head.buff_addr_virt], eax
@@ -1463,17 +1468,28 @@ proc transmit stdcall bufferptr
         add     dword [ebx + device.bytes_tx], ecx
         adc     dword [ebx + device.bytes_tx + 4], 0
 
-        DEBUGF  1,"Transmit OK\n"
-        popf
+        spin_unlock_irqrestore
         xor     eax, eax
         ret
 
-  .fail:
-        DEBUGF  2,"Transmit failed\n"
+  .error:
+        DEBUGF  2, "TX packet error\n"
+        inc     [ebx + device.packets_tx_err]
         invoke  NetFree, [bufferptr]
-        popf
+
+        spin_unlock_irqrestore
         or      eax, -1
         ret
+
+  .overrun:
+        DEBUGF  2, "TX overrun\n"
+        inc     [ebx + device.packets_tx_ovr]
+        invoke  NetFree, [bufferptr]
+
+        spin_unlock_irqrestore
+        or      eax, -1
+        ret
+
 
 endp
 
@@ -1484,41 +1500,22 @@ endp
 ;; Interrupt handler ;;
 ;;                   ;;
 ;;;;;;;;;;;;;;;;;;;;;;;
-
-align 4
+align 16
 int_handler:
 
         push    ebx esi edi
 
-        DEBUGF  1,"INT\n"
-
-; Find pointer of device which made IRQ occur
-        mov     ecx, [devices]
-        test    ecx, ecx
-        jz      .nothing
-        mov     esi, device_list
-  .nextdevice:
-        mov     ebx, [esi]
+        mov     ebx, [esp+4*4]
+        DEBUGF  1,"INT for 0x%x\n", ebx
 
         set_io  [ebx + device.io_addr], 0
         set_io  [ebx + device.io_addr], IntrStatus
         in      ax, dx
-        out     dx, ax                  ; send it back to ACK
         test    ax, ax
-        jnz     .got_it
-  .continue:
-        add     esi, 4
-        dec     ecx
-        jnz     .nextdevice
-  .nothing:
-        pop     edi esi ebx
-        xor     eax, eax
+        jz      .nothing
 
-        ret                             ; If no device was found, abort (The irq was probably for a device, not registered to this driver)
-
-
-  .got_it:
-        DEBUGF  1, "status=0x%x\n", ax
+        out     dx, ax          ; ACK interrupt
+        DEBUGF  1, "Status=0x%x\n", ax
 
         push    ax
 
@@ -1652,6 +1649,11 @@ end if
 
         ret
 
+  .nothing:
+        pop     edi esi ebx
+        xor     eax, eax
+
+        ret
 
 
 

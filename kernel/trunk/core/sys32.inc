@@ -1,11 +1,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                              ;;
-;; Copyright (C) KolibriOS team 2004-2016. All rights reserved. ;;
+;; Copyright (C) KolibriOS team 2004-2022. All rights reserved. ;;
 ;;  Distributed under terms of the GNU General Public License.  ;;
 ;;                                                              ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-$Revision: 6817 $
+$Revision: 9930 $
 
 align 4 ;3A08
 build_interrupt_table:
@@ -14,48 +14,47 @@ build_interrupt_table:
         mov     ecx, 0x40
         mov     eax, (10001110b shl 24) + os_code
   @@:
-        movsw   ;low word of code-entry
-        stosd   ;interrupt gate type : os_code selector
-        movsw   ;high word of code-entry
+        movsw   ; low word of code-entry
+        stosd   ; interrupt gate type : os_code selector
+        movsw   ; high word of code-entry
         loop    @b
-        movsd   ;copy low  dword of trap gate for int 0x40
-        movsd   ;copy high dword of trap gate for int 0x40
+        movsd   ; copy low  dword of trap gate for int 0x40
+        movsd   ; copy high dword of trap gate for int 0x40
+        mov     ecx, 23
+        mov     eax, (10001110b shl 24) + os_code
+  @@:
+        movsw   ; low word of code-entry
+        stosd   ; interrupt gate type : os_code selector
+        movsw   ; high word of code-entry
+        loop    @b
         lidt    [esi]
         ret
 
 iglobal
   align 4
   sys_int:
-    ;exception handlers addresses (for interrupt gate construction)
+    ; exception handlers addresses (for interrupt gate construction)
         dd      e0,e1,e2,e3,e4,e5,e6,except_7 ; SEE: core/fpu.inc
         dd      e8,e9,e10,e11,e12,e13,page_fault_exc,e15
         dd      e16, e17,e18, e19
         times   12 dd unknown_interrupt ;int_20..int_31
 
-    ;interrupt handlers addresses (for interrupt gate construction)
-        ; 0x20 .. 0x2F - IRQ handlers
-        dd      irq0, irq_serv.irq_1, irq_serv.irq_2
-        dd      irq_serv.irq_3, irq_serv.irq_4
-        dd      irq_serv.irq_5,  irq_serv.irq_6,  irq_serv.irq_7
-        dd      irq_serv.irq_8,  irq_serv.irq_9,  irq_serv.irq_10
-        dd      irq_serv.irq_11, irq_serv.irq_12, irqD, irq_serv.irq_14, irq_serv.irq_15
-        dd irq_serv.irq_16
-        dd irq_serv.irq_17
-        dd irq_serv.irq_18
-        dd irq_serv.irq_19
-        dd irq_serv.irq_20
-        dd irq_serv.irq_21
-        dd irq_serv.irq_22
-        dd irq_serv.irq_23
+    ; interrupt handlers addresses (for interrupt gate construction)
+        ; 0x20+ are IRQ handlers
+        dd irq0
+        rept 12 irqn:1  \{dd irq_serv.irq_\#irqn\}
+        dd irqD
+        rept 18 irqn:14 \{dd irq_serv.irq_\#irqn\}
 
-    times 32 - IRQ_RESERVED dd unknown_interrupt
-    ;int_0x40 gate trap (for directly copied)
-        dw      i40 and 0xFFFF, os_code, 11101111b shl 8, i40 shr 16
+        ; int_0x40 gate trap (for directly copied)
+        dw i40 and 0xFFFF, os_code, 11101111b shl 8, i40 shr 16
+
+        rept 23 irqn:33 \{dd irq_serv.irq_\#irqn\}
 
   idtreg: ; data for LIDT instruction (!!! must be immediately below sys_int data)
         dw      2*($-sys_int-4)-1
-        dd      idts ;0x8000B100
-        dw      0    ;просто выравнивание
+        dd      idts ; 0x8000B100
+        dw      0    ; alignment
 
   msg_fault_sel dd  msg_exc_8,msg_exc_u,msg_exc_a,msg_exc_b
                 dd  msg_exc_c,msg_exc_d,msg_exc_e,msg_exc_u
@@ -105,19 +104,19 @@ uglobal
   pf_err_code   dd ?
 endg
 
-page_fault_exc:                 ; дуракоусточивость: селекторы испорчены...
-        pop     [ss:pf_err_code]; действительно до следующего #PF
+page_fault_exc:                   ; foolproof: selectors are clobbered ...
+        pop     [ss:pf_err_code]  ; actually, until the next #PF
         save_ring3_context
         mov     bl, 14
 
-exc_c:                          ; исключения (все, кроме 7-го - #NM)
-; Фрэйм стека при исключении/прерывании из 3-го кольца + pushad (т.е., именно здесь)
+exc_c:                            ; exceptions (all but 7th - #NM)
+ ; stack frame when exception/interrupt from ring3 + pushad (i.e right here)
   reg_ss        equ esp+0x30
   reg_esp3      equ esp+0x2C
   reg_eflags    equ esp+0x28
   reg_cs3       equ esp+0x24
   reg_eip       equ esp+0x20
- ; это фрэйм от pushad
+ ; this if frame from pushad
   reg_eax       equ esp+0x1C
   reg_ecx       equ esp+0x18
   reg_edx       equ esp+0x14
@@ -127,33 +126,33 @@ exc_c:                          ; исключения (все, кроме 7-г�
   reg_esi       equ esp+0x04
   reg_edi       equ esp+0x00
 
-        mov     ax, app_data        ;исключение
-        mov     ds, ax                  ;загрузим правильные значения
-        mov     es, ax                  ;в регистры
-        cld                     ; и приводим DF к стандарту
+        mov     ax, app_data       ; exception
+        mov     ds, ax             ; load proper values
+        mov     es, ax             ; to registers
+        cld                        ; clear the direction flag
         movzx   ebx, bl
 ; redirect to V86 manager? (EFLAGS & 0x20000) != 0?
         test    byte[reg_eflags+2], 2
         jnz     v86_exc_c
-        cmp     bl, 14          ; #PF
+        cmp     bl, 14             ; #PF
         jne     @f
         call    page_fault_handler ; SEE: core/memory.inc
   @@:
         mov     esi, [current_slot]
-        btr     [esi+APPDATA.except_mask], ebx
+        btr     [esi + APPDATA.except_mask], ebx
         jnc     @f
-        mov     eax, [esi+APPDATA.exc_handler]
+        mov     eax, [esi + APPDATA.exc_handler]
         test    eax, eax
         jnz     IRetToUserHook
   @@:
         cli
-        mov     eax, [esi+APPDATA.debugger_slot]
+        mov     eax, [esi + APPDATA.debugger_slot]
         test    eax, eax
         jnz     .debug
 ; not debuggee => say error and terminate
-        call    show_error_parameters
+        call    show_error_parameters  ; this function output in edx = current_slot
         sti
-        mov     [edx + TASKDATA.state], byte 4 ; terminate
+        mov     [edx + APPDATA.state], TSTATE_TERMINATING
         call    wakeup_osloop
         call    change_task
 ; If we're here, then the main OS thread has crashed before initializing IDLE thread.
@@ -181,14 +180,14 @@ exc_c:                          ; исключения (все, кроме 7-г�
         mov     cl, 3           ; debug_message code=debug_exception
 .notify:
         push    ebx             ; debug_message data
-        mov     ebx, [TASK_BASE]
-        push    [ebx+TASKDATA.pid] ; PID
+        mov     ebx, [current_slot]
+        push    [ebx + APPDATA.tid] ; PID
         push    ecx             ; debug_message code ((here: ecx==1/3))
         mov     cl, 12          ; debug_message size
         call    debugger_notify ;; only ONE using, inline ??? SEE: core/debug.inc
         add     esp, 12
-        mov     edx, [TASK_BASE]
-        mov     byte [edx+TASKDATA.state], 1 ; suspended
+        mov     edx, [current_slot]
+        mov     [edx + APPDATA.state], TSTATE_RUN_SUSPENDED
         call    change_task     ; SEE: core/shed.inc
         restore_ring3_context
         iretd
@@ -215,11 +214,11 @@ show_error_parameters:
         call    fs_execute_from_sysdir_param
         pop     ebx
 .no_ud:
-        mov     edx, [TASK_BASE];not scratched below
+        mov     edx, [current_slot];not scratched below
         if lang eq sp
-        DEBUGF  1, "K : Proceso - terminado forzado PID: %x [%s]\n", [edx+TASKDATA.pid], [current_slot]
+        DEBUGF  1, "K : Proceso - terminado forzado PID: %x [%s]\n", [edx + APPDATA.tid], [current_slot]
         else
-        DEBUGF  1, "K : Process - forced terminate PID: %x [%s]\n", [edx+TASKDATA.pid], [current_slot]
+        DEBUGF  1, "K : Process - forced terminate PID: %x [%s]\n", [edx + APPDATA.tid], [current_slot]
         end if
         cmp     bl, 0x08
         jb      .l0
@@ -302,14 +301,14 @@ show_error_parameters:
         shr     ebx, 12
         mov     ecx, ebx
         shr     ecx, 10
-        mov     edx, [master_tab+ecx*4]
+        mov     edx, [master_tab + ecx*4]
         test    edx, PG_READ
-        jz      .fail             ;page table is not created
-                                  ;incorrect address in the program
+        jz      .fail             ; page table is not created
+                                  ; incorrect address in the program
 
-        mov     eax, [page_tabs+ebx*4]
+        mov     eax, [page_tabs + ebx*4]
         test    eax, 2
-        jz      .fail             ;address not reserved for use. error
+        jz      .fail             ; address not reserved for use. error
 
         pop     ebx
         xor     eax, eax
@@ -343,10 +342,8 @@ lock_application_table:
         mov     ecx, application_table_mutex
         call    mutex_lock
 
-        mov     eax, [CURRENT_TASK]
-        shl     eax, 5
-        add     eax, CURRENT_TASK+TASKDATA.pid
-        mov     eax, [eax]
+        mov     eax, [current_slot]
+        mov     eax, [eax + APPDATA.tid]
 
         mov     [application_table_owner], eax
 
@@ -366,17 +363,15 @@ unlock_application_table:
 
         ret
 
-;  * eax = 64 - номер функции
-;  * ebx = 1 - единственная подфункция
-;  * ecx = новый размер памяти
-;Возвращаемое значение:
-;  * eax = 0 - успешно
-;  * eax = 1 - недостаточно памяти
-
+; sysfn 64 implementation
 align 4
 sys_resize_app_memory:
-        ; ebx = 1 - resize
-        ; ecx = new amount of memory
+; in:   eax = 64 - function number
+;       ebx = 1 - number of its only subfunction
+;       ecx = new amount of memory
+; out:
+;       eax = 0 - success
+;       eax = 1 - out of memory
 
 ;        cmp    eax,1
         dec     ebx
@@ -393,7 +388,7 @@ sys_resize_app_memory:
 @@:
         stdcall new_mem_resize, ecx
 .store_result:
-        mov     [esp+32], eax
+        mov     [esp + SYSCALL_STACK.eax], eax
 .no_application_mem_resize:
         ret
 
@@ -416,43 +411,42 @@ destroy_thread:
 
         push    esi        ;save .slot
 
-        shl     esi, 8
-        mov     edx, [SLOT_BASE+esi+APPDATA.process]
+        shl     esi, BSF sizeof.APPDATA
+        mov     edx, [SLOT_BASE + esi + APPDATA.process]
         test    edx, edx
         jnz     @F
+        mov     [SLOT_BASE + esi + APPDATA.state], TSTATE_FREE
         pop     esi
-        shl     esi, 5
-        mov     [CURRENT_TASK+esi+TASKDATA.state], 9
         ret
 @@:
         push    edx                     ;save .process
-        lea     edx, [SLOT_BASE+esi]
+        lea     edx, [SLOT_BASE + esi]
         call    scheduler_remove_thread
         call    lock_application_table
 
 ; if the process is in V86 mode...
         mov     eax, [.slot]
-        shl     eax, 8
-        mov     esi, [eax+SLOT_BASE+APPDATA.pl0_stack]
+        shl     eax, BSF sizeof.APPDATA
+        mov     esi, [SLOT_BASE + eax + APPDATA.pl0_stack]
         add     esi, RING0_STACK_SIZE
-        cmp     [eax+SLOT_BASE+APPDATA.saved_esp0], esi
+        cmp     [SLOT_BASE + eax + APPDATA.saved_esp0], esi
         jz      .nov86
 ; ...it has page directory for V86 mode
-        mov     esi, [eax+SLOT_BASE+APPDATA.saved_esp0]
+        mov     esi, [SLOT_BASE + eax + APPDATA.saved_esp0]
         mov     ecx, [esi+4]
-        mov     [eax+SLOT_BASE+APPDATA.process], ecx
+        mov     [SLOT_BASE + eax + APPDATA.process], ecx
 ; ...and I/O permission map for V86 mode
         mov     ecx, [esi+12]
-        mov     [eax+SLOT_BASE+APPDATA.io_map], ecx
+        mov     [SLOT_BASE + eax + APPDATA.io_map], ecx
         mov     ecx, [esi+8]
-        mov     [eax+SLOT_BASE+APPDATA.io_map+4], ecx
+        mov     [SLOT_BASE + eax + APPDATA.io_map+4], ecx
 .nov86:
-;destroy per-thread kernel objects
+; destroy per-thread kernel objects
         mov     esi, [.slot]
-        shl     esi, 8
-        add     esi, SLOT_BASE+APP_OBJ_OFFSET
+        shl     esi, BSF sizeof.APPDATA
+        add     esi, SLOT_BASE + APP_OBJ_OFFSET
 @@:
-        mov     eax, [esi+APPOBJ.fd]
+        mov     eax, [esi + APPOBJ.fd]
         test    eax, eax
         jz      @F
 
@@ -460,7 +454,7 @@ destroy_thread:
         je      @F
 
         push    esi
-        call    [eax+APPOBJ.destroy]
+        call    [eax + APPOBJ.destroy]
            DEBUGF 1,"%s",msg_obj_destroy
         pop     esi
         jmp     @B
@@ -470,7 +464,7 @@ destroy_thread:
         jne     @F
 
         mov     [fpu_owner], 2
-        mov     eax, [256*2+SLOT_BASE+APPDATA.fpu_state]
+        mov     eax, [SLOT_BASE + sizeof.APPDATA*2 + APPDATA.fpu_state]
         clts
         bt      [cpu_caps], CAPS_SSE
         jnc     .no_SSE
@@ -509,8 +503,8 @@ destroy_thread:
         jb      .loop
 ; get process PID
         mov     eax, esi
-        shl     eax, 5
-        mov     eax, [eax+CURRENT_TASK+TASKDATA.pid]
+        shl     eax, BSF sizeof.APPDATA
+        mov     eax, [eax + SLOT_BASE + APPDATA.tid]
 ; compare current lock input with process PID
         cmp     eax, [PID_lock_input]
         jne     @f
@@ -531,18 +525,18 @@ destroy_thread:
         jb      .loop2
 
         mov     ecx, esi          ; remove buttons
-  bnewba2:
+  .bnewba2:
         mov     edi, [BTN_ADDR]
         mov     eax, edi
         cld
         movzx   ebx, word [edi]
         inc     bx
-  bnewba:
+  .bnewba:
         dec     bx
-        jz      bnmba
+        jz      .bnmba
         add     eax, 0x10
         cmp     cx, [eax]
-        jnz     bnewba
+        jnz     .bnewba
         pusha
         mov     ecx, ebx
         inc     ecx
@@ -552,45 +546,37 @@ destroy_thread:
         call    memmove
         dec     dword [edi]
         popa
-        jmp     bnewba2
-  bnmba:
+        jmp     .bnewba2
+  .bnmba:
 
         pusha   ; save window coordinates for window restoring
         cld
-        shl     esi, 5
+        shl     esi, BSF sizeof.WDATA
         add     esi, window_data
-        mov     eax, [esi+WDATA.box.left]
+        mov     eax, [esi + WDATA.box.left]
         mov     [draw_limits.left], eax
-        add     eax, [esi+WDATA.box.width]
+        add     eax, [esi + WDATA.box.width]
         mov     [draw_limits.right], eax
-        mov     eax, [esi+WDATA.box.top]
+        mov     eax, [esi + WDATA.box.top]
         mov     [draw_limits.top], eax
-        add     eax, [esi+WDATA.box.height]
+        add     eax, [esi + WDATA.box.height]
         mov     [draw_limits.bottom], eax
 
         xor     eax, eax
-        mov     [esi+WDATA.box.left], eax
-        mov     [esi+WDATA.box.width], eax
-        mov     [esi+WDATA.box.top], eax
-        mov     [esi+WDATA.box.height], eax
-        mov     [esi+WDATA.cl_workarea], eax
-        mov     [esi+WDATA.cl_titlebar], eax
-        mov     [esi+WDATA.cl_frames], eax
-        mov     dword [esi+WDATA.z_modif], eax; clear all flags: z_modif, wstate, redraw, wdrawn
-        lea     edi, [esi-window_data+draw_data]
-        mov     ecx, 32/4
+        mov     edi, esi
+        mov     ecx, sizeof.WDATA/4
         rep stosd
         popa
 
 ; debuggee test
         pushad
         mov     edi, esi
-        shl     edi, 5
-        mov     eax, [SLOT_BASE+edi*8+APPDATA.debugger_slot]
+        shl     edi, BSF sizeof.APPDATA
+        mov     eax, [SLOT_BASE + edi + APPDATA.debugger_slot]
         test    eax, eax
         jz      .nodebug
         movi    ecx, 8
-        push    dword [CURRENT_TASK+edi+TASKDATA.pid]; PID
+        push    dword [SLOT_BASE + edi + APPDATA.tid]; PID
         push    2
         call    debugger_notify
         pop     ecx
@@ -599,55 +585,48 @@ destroy_thread:
         popad
 
         mov     ebx, [.slot]
-        shl     ebx, 8
+        shl     ebx, BSF sizeof.APPDATA
         push    ebx
-        mov     ebx, [SLOT_BASE+ebx+APPDATA.pl0_stack]
+        mov     ebx, [SLOT_BASE + ebx + APPDATA.pl0_stack]
 
         stdcall kernel_free, ebx
 
         pop     ebx
-        mov     ebx, [SLOT_BASE+ebx+APPDATA.cur_dir]
+        mov     ebx, [SLOT_BASE + ebx + APPDATA.cur_dir]
         stdcall kernel_free, ebx
 
         mov     edi, [.slot]
-        shl     edi, 8
+        shl     edi, BSF sizeof.APPDATA
         add     edi, SLOT_BASE
 
-        mov     eax, [edi+APPDATA.io_map]
-        cmp     eax, [SLOT_BASE+256+APPDATA.io_map]
+        mov     eax, [edi + APPDATA.io_map]
+        cmp     eax, [SLOT_BASE + sizeof.APPDATA+APPDATA.io_map]
         je      @F
         call    free_page
 @@:
         mov     eax, [edi+APPDATA.io_map+4]
-        cmp     eax, [SLOT_BASE+256+APPDATA.io_map+4]
+        cmp     eax, [SLOT_BASE+sizeof.APPDATA+APPDATA.io_map+4]
         je      @F
         call    free_page
 @@:
-        lea     ebx, [edi+APPDATA.list]
+        lea     ebx, [edi + APPDATA.list]
         list_del ebx                    ;destroys edx, ecx
-
-        mov     eax, 0x20202020
-        stosd
-        stosd
-        stosd
-        mov     ecx, 244/4
-        xor     eax, eax
-        rep stosd
 
   ; activate window
         movzx   eax, word [WIN_STACK + esi*2]
-        cmp     eax, [TASK_COUNT]
+        cmp     eax, [thread_count]
         jne     .dont_activate
         pushad
  .check_next_window:
         dec     eax
         cmp     eax, 1
         jbe     .nothing_to_activate
-        lea     esi, [WIN_POS+eax*2]
+        lea     esi, [WIN_POS + eax*2]
         movzx   edi, word [esi]              ; edi = process
-        shl     edi, 5
-        cmp     [CURRENT_TASK + edi + TASKDATA.state], byte 9 ; skip dead slots
+        shl     edi, BSF sizeof.APPDATA
+        cmp     [SLOT_BASE + edi + APPDATA.state], TSTATE_FREE ; skip free slots
         je      .check_next_window
+        shr     edi, (BSF sizeof.APPDATA - BSF sizeof.WDATA)
         add     edi, window_data
 ; \begin{diamond}[19.09.2006]
 ; skip minimized windows
@@ -660,8 +639,8 @@ destroy_thread:
  .dont_activate:
 
         push    esi     ; remove hd1 & cd & flp reservation
-        shl     esi, 5
-        mov     esi, [esi+CURRENT_TASK+TASKDATA.pid]
+        shl     esi, BSF sizeof.APPDATA
+        mov     esi, [SLOT_BASE + esi + APPDATA.tid]
         cmp     [cd_status], esi
         jnz     @f
         call    free_cd_channel
@@ -676,32 +655,30 @@ destroy_thread:
 
         pusha                 ; remove all port reservations
         mov     edx, esi
-        shl     edx, 5
-        add     edx, CURRENT_TASK
-        mov     edx, [edx+TASKDATA.pid]
+        shl     edx, BSF sizeof.APPDATA
+        mov     edx, [SLOT_BASE + edx + APPDATA.tid]
 
-  rmpr0:
-
+  .rmpr0:
         mov     esi, [RESERVED_PORTS]
 
         test    esi, esi
-        jz      rmpr9
+        jz      .rmpr9
 
-  rmpr3:
+  .rmpr3:
 
         mov     edi, esi
         shl     edi, 4
         add     edi, RESERVED_PORTS
 
         cmp     edx, [edi]
-        je      rmpr4
+        je      .rmpr4
 
         dec     esi
-        jnz     rmpr3
+        jnz     .rmpr3
 
-        jmp     rmpr9
+        jmp     .rmpr9
 
-  rmpr4:
+  .rmpr4:
 
         mov     ecx, 256
         sub     ecx, esi
@@ -714,19 +691,33 @@ destroy_thread:
 
         dec     dword [RESERVED_PORTS]
 
-        jmp     rmpr0
+        jmp     .rmpr0
 
-  rmpr9:
-
+  .rmpr9:
         popa
+
+; clearing APPDATA structure this thread
+        pushad
+        mov     edi, esi
+        shl     edi, BSF sizeof.APPDATA
+        add     edi, SLOT_BASE
+        mov     eax, 0x20202020
+        stosd
+        stosd
+        stosd
+        mov     ecx, 244/4
+        xor     eax, eax
+        rep stosd
+        popad
+
         mov     edi, esi ; do not run this process slot
-        shl     edi, 5
-        mov     [edi+CURRENT_TASK + TASKDATA.state], byte 9
+        shl     edi, BSF sizeof.APPDATA
+        mov     [SLOT_BASE + edi + APPDATA.state], TSTATE_FREE
 ; debugger test - terminate all debuggees
         mov     eax, 2
-        mov     ecx, SLOT_BASE+2*0x100+APPDATA.debugger_slot
+        mov     ecx, SLOT_BASE + 2*sizeof.APPDATA + APPDATA.debugger_slot
 .xd0:
-        cmp     eax, [TASK_COUNT]
+        cmp     eax, [thread_count]
         ja      .xd1
         cmp     dword [ecx], esi
         jnz     @f
@@ -738,7 +729,7 @@ destroy_thread:
         popad
 @@:
         inc     eax
-        add     ecx, 0x100
+        add     ecx, sizeof.APPDATA
         jmp     .xd0
 .xd1:
 ;release slot
@@ -746,8 +737,8 @@ destroy_thread:
         bts     [thr_slot_map], esi
 
         mov     ecx, [.process]
-        lea     eax, [ecx+PROC.thr_list]
-        cmp     eax, [eax+LHEAD.next]
+        lea     eax, [ecx + PROC.thr_list]
+        cmp     eax, [eax + LHEAD.next]
         jne     @F
 
         call    destroy_process.internal
@@ -800,7 +791,7 @@ proc protect_from_terminate
         mov     edx, [current_slot]
 ; Atomically increment depth of critical areas and get the old value.
         mov     eax, 1
-        lock xadd [edx+APPDATA.terminate_protection], eax
+        lock xadd [edx + APPDATA.terminate_protection], eax
 ; If the old value was zero, somebody has started to terminate us,
 ; so we are destructing and cannot do anything protected.
 ; Otherwise, return to the caller.
@@ -817,7 +808,7 @@ endp
 proc unprotect_from_terminate
         mov     edx, [current_slot]
 ; Atomically decrement depth of critical areas.
-        lock dec [edx+APPDATA.terminate_protection]
+        lock dec [edx + APPDATA.terminate_protection]
 ; If the result of decrement is zero, somebody has requested termination,
 ; but at that moment we were inside a critical area; terminate now.
         jz      sys_end
@@ -825,16 +816,16 @@ proc unprotect_from_terminate
         ret
 endp
 
-; Request termination of thread identified by edx = SLOT_BASE + slot*256.
+; Request termination of thread identified by edx = SLOT_BASE + slot*sizeof.APPDATA.
 ; Called by anyone.
 proc request_terminate
         xor     eax, eax        ; set return value
 ; Atomically clear the upper bit. If it was already zero, then
 ; somebody has requested termination before us, so just exit.
-        lock btr [edx+APPDATA.terminate_protection], 31
+        lock btr [edx + APPDATA.terminate_protection], 31
         jnc     .unsafe
 ; Atomically decrement depth of critical areas.
-        lock dec [edx+APPDATA.terminate_protection]
+        lock dec [edx + APPDATA.terminate_protection]
 ; If the result of decrement is nonzero, the target thread is inside a
 ; critical area; leave termination to leaving that area.
         jnz     .unsafe

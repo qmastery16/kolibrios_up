@@ -1,27 +1,23 @@
 use32
-	org 0x0
-	db 'MENUET01' ;идентиф. исполняемого файла всегда 8 байт
-	dd 0x1
-	dd start
-	dd i_end ;размер приложения
-	dd mem,stacktop
-	dd 0,cur_dir_path
+	org 0
+	db 'MENUET01'
+	dd 1,start,i_end,mem,stacktop,0,cur_dir_path
 
+include '../../../../../KOSfuncs.inc'
 include '../../../../../macros.inc'
 include '../../../../../proc32.inc'
-include '../../../../../develop/libraries/box_lib/load_lib.mac'
 include '../../../../../dll.inc'
+include '../../../../../load_lib.mac'
 
-@use_library_mem mem.Alloc,mem.Free,mem.ReAlloc, 0 ;dll.Load
+@use_library mem.Alloc,mem.Free,mem.ReAlloc, 0 ;dll.Load
 
 align 4
 start:
-	load_library vectors_name, cur_dir_path, library_path, system_path, \
-		err_message_found_lib, head_f_l, import_buf2d_lib, err_message_import, head_f_i
+	load_library lib0_name, library_path, system_path, import_buf2d_lib
 	cmp eax,-1
 	jz button.exit
 
-	mcall 40,0x27
+	mcall SF_SET_EVENTS_MASK, 0x27
 	stdcall [buf2d_create], buf_0 ;создаем буфер
 	stdcall [buf2d_line], buf_0, 110, 20, 125, 90, 0xffff00 ;рисуем линию
 	stdcall [buf2d_line], buf_0, 60, 120, 110, 20, 0xd000 ;рисуем линию
@@ -35,10 +31,8 @@ start:
 
 	;если бы использовалась функция buf2d_create, тогда биты изображения
 	;пришлось бы копировать следущими строками:
-	;xor ecx,ecx
-	;xor eax,eax
-	;mov cx,word[buf_1.size_x]
-	;mov ax,word[buf_1.size_y]
+	;movzx ecx,word[buf_1.size_x]
+	;movzx eax,word[buf_1.size_y]
 	;imul ecx,eax
 	;imul ecx,3 ;ecx - колличество байт в маленьком буфере
 	;stdcall mem_copy, dword[buf_0],dword[buf_1],ecx
@@ -56,7 +50,7 @@ red_win:
 
 align 4
 still:
-	mcall 10
+	mcall SF_WAIT_EVENT
 	cmp al,1 ;изм. положение окна
 	jz red_win
 	cmp al,2
@@ -68,21 +62,21 @@ still:
 align 4
 draw_window:
 	pushad
-	mcall 12,1
+	mcall SF_REDRAW, SSF_BEGIN_DRAW
 
 	;mov edx,0x32000000
 	mov edx,0x33000000
-	mcall 0,(50 shl 16)+330,(30 shl 16)+275,,,caption
+	mcall SF_CREATE_WINDOW, (50 shl 16)+330,(30 shl 16)+275,,,caption
 
 	stdcall [buf2d_draw], buf_0
 
-	mcall 12,2
+	mcall SF_REDRAW, SSF_END_DRAW
 	popad
 	ret
 
 align 4
 key:
-	mcall 2
+	mcall SF_GET_KEY
 
 	cmp ah,27 ;Esc
 	je button.exit
@@ -91,13 +85,13 @@ key:
 
 align 4
 button:
-	mcall 17 ;получить код нажатой кнопки
+	mcall SF_GET_BUTTON
 	cmp ah,1
 	jne still
 .exit:
 	stdcall [buf2d_delete],buf_0 ;удаляем буфер
 	stdcall [buf2d_delete],buf_1 ;удаляем буфер
-	mcall -1 ;выход из программы
+	mcall SF_TERMINATE_PROCESS
 
 caption db 'Test buf2d library, [Esc] - exit',0
 
@@ -164,19 +158,12 @@ buf_1:
 
 ;--------------------------------------------------
 system_path db '/sys/lib/'
-vectors_name db 'buf2d.obj',0
-err_message_found_lib db 'Sorry I cannot load library buf2d.obj',0
-head_f_i:
-head_f_l db 'System error',0
-err_message_import db 'Error on load import library buf2d.obj',0
+lib0_name db 'buf2d.obj',0
 ;--------------------------------------------------
 
 i_end: ;конец кода
 	rb 1024
 stacktop:
-cur_dir_path:
-	rb 4096
-library_path:
-	rb 4096
+cur_dir_path rb 4096
+library_path rb 4096
 mem:
-

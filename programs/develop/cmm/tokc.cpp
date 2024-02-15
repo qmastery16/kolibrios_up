@@ -174,10 +174,14 @@ SAVEREG *psavereg=&savereg;
 
 int loadfile(char *filename,int firstflag)
 {
-int hold;
-
+	int hold;
 	for(int i=0;i<=numfindpath;i++){
-		sprintf((char *)string2,"%s%s",findpath[(firstflag==0?i:numfindpath-i)],filename);
+		char *path = findpath[(firstflag==0?i:numfindpath-i)]; // FIXME! (нужно выяснить, почему path может быть равен "\0")
+		if(path && strlen(path)) {
+			sprintf((char *)string2,"%s%s", path, filename);
+		} else {
+			strcpy((char *)string2, filename);
+		}
 #ifndef _WIN32_
 		for(char* p=(char *)string2; *p; ++p) if(*p=='\\') *p='/';
 #endif
@@ -9807,6 +9811,11 @@ int next;
 	}
 	else{
 		itok.flag=f_extern;
+		// { Added by Coldy 
+		// extern is dynamical variable
+		// This also suppress warning if variable is unused
+		dynamic_flag = TRUE;
+		// }
 		switch(tok){
 			case tk_far:
 			case tk_cdecl:
@@ -9976,7 +9985,7 @@ void unpackteg(structteg *tteg)
 int i;
 elementteg *bazael;
 structteg *newteg;
-int ssize,count;
+int ssize=0,count;
 idrec *newrec,*ptr;
 	if(alignword){	//выровнять на четный адрес
 		if(am32==0){

@@ -1,5 +1,5 @@
 
-WND_COLOR equ 0x02aa00FF
+; Author: RU095@YANDEX.RU
 
 use32
   org	 0x0
@@ -18,7 +18,7 @@ include '..\..\macros.inc' ; макросы облегчают жизнь ассемблерщиков!
 include 'ASCL.INC'
 include 'ASCGL.INC'
 
-
+WND_COLOR equ 0x74000000
 
 gif_hash_offset = gif_hash_area
 COLOR_ORDER equ MENUETOS
@@ -122,21 +122,13 @@ no_event:
 draw_window:
     startwd
 
-    mov  eax,0
-    mov  ebx,50*65536+522
-    mov  ecx,50*65536+536
-    mov  edx,WND_COLOR
-    mov  esi,0x8050FFd0
-    mov  edi,0x005080d0
-    int  0x40
-
-    label 8,6,'ПОДЗЕМЕЛЬЕ для Колибри ОС <<<RU095@YANDEX.RU>>> z/x стрелять',cl_White+font_Big
-
-    mov  eax,8
-    mov  ebx,(500)*65536+12
-    mov  ecx,5*65536+12
-    mov  edx,1
-    mov  esi,0x000000
+    mcall 48, 4
+    mov  ecx, 50*65536+516
+	add  ecx, eax
+    mov  ebx, 50*65536+521
+    mov  edx, WND_COLOR
+    mov  edi, title
+    xor  eax, eax
     int  0x40
 
     xor  ecx,ecx
@@ -446,7 +438,7 @@ draw_subimage:
   call proverka_gold
   call potop
 
-  setimg 6,20,canvas
+  setimg 0,0,canvas
 
   call timer
   call tablo
@@ -1666,7 +1658,7 @@ ret
 ;------------------------Загрузка уровней---------------------------------------
 load_level:
     imgtoimg img_level,32,32,canvas
-  setimg 6,20,canvas
+  setimg 0,0,canvas
 
     xor eax,eax
     xor ebx,ebx
@@ -2073,6 +2065,12 @@ Enemy:	dw  1,448,128,0,0,500	;враги класс,Х,У,положение в лабиринте,направление 
 
 ;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+if lang eq ru
+title db 'ПОДЗЕМЕЛЬЕ для КолибриОС <RU095@YANDEX.RU> z/x стрелять',0
+else
+title db 'Dungeon for KolibriOS <RU095@YANDEX.RU> z/x - shoot',0
+endf
+
 bullet_bmp:
 file 'bullet.bmp'
 rb 1
@@ -2171,7 +2169,6 @@ img_index  rd 1      ; номер текущего кадра
 ;hashtable rd 4096    ; рабочая область для РеадГИФ процедуры
 workarea:
 file 'aniall.gif'
-
 
 ;temp rb 0x100000 ; место для ГИФ фаила
 rb 10

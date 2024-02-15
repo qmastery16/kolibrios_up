@@ -42,18 +42,27 @@ inline fastcall void debugln( EDX)
 	debugch(10);
 }
 
-inline void debugi(dword d_int)
+inline fastcall void debugcls()
 {
-	char tmpch[12];
-	itoa_(#tmpch, d_int);
-	debugln(#tmpch);
+	char i;
+	for (i=0;i<70;i++) debugch(10);
 }
 
 :void debugval(dword text,number)
 {
+	char tmpch[12];
 	debug(text);
 	debug(": ");
-	debugi(number);
+	itoa_(#tmpch, number);
+	debugln(#tmpch);
+}
+
+:void debug_n(dword _text, _size)
+{
+	dword res_text = malloc(_size);
+	strncpy(res_text, _text, _size-1);
+	debugln(res_text);
+	free(res_text);
 }
 
 #endif

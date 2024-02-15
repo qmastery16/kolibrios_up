@@ -1,11 +1,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                              ;;
-;; Copyright (C) KolibriOS team 2004-2015. All rights reserved. ;;
+;; Copyright (C) KolibriOS team 2004-2022. All rights reserved. ;;
 ;; Distributed under terms of the GNU General Public License    ;;
 ;;                                                              ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-$Revision: 7129 $
+$Revision: 9715 $
 
 
 flm               db 0
@@ -77,6 +77,7 @@ config_file_variables:
         config_variable 'vbemode', parse_vbemode
         config_variable 'biosdisks', parse_biosdisks
         config_variable 'imgfrom', parse_imgfrom
+        config_variable 'syspath', parse_syspath
         dw      0
 ; data for image file loading, look in PrimaryLoader.txt
 image_file_struct:

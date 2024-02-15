@@ -25,6 +25,7 @@ dlgtemplate:
 .size = $
 end virtual
 
+align 16
 GenericBox:
         push    [cursor_x]
         push    [cursor_y]
@@ -41,19 +42,21 @@ GenericBox:
 ; message loop
 .event:
 ;        call    get_event
-        push    10
+        push    SF_WAIT_EVENT
         pop     eax
         int     40h
         dec     eax
         jz      .redraw
         dec     eax
         jz      .key
+        sub     eax, 4
+        jz      .mouse
         jmp     exit
 .redraw:
         call    draw_window
         jmp     .event
 .key:
-        mov     al, 2
+        mov     al, SF_GET_KEY
         int     40h
         shr     eax, 8
         cmp     al, 0xE0
@@ -84,7 +87,7 @@ GenericBox:
         push    eax
         push    2
         push    ebx
-        call    ecx
+        call    ecx ;DlgProc
         test    eax, eax
         jz      .event
         mov     [esp+28], eax
@@ -137,6 +140,136 @@ GenericBox:
 .ralt_up:
         and     [ctrlstate], not 0x20
         jmp     .event
+align 4
+.mouse:
+        mov     eax,SF_MOUSE_GET
+        mov     ebx,SSF_BUTTON_EXT
+        int     0x40
+        mov     byte[mousestate], 1
+        bt      eax,8 ;left but. down
+        jc      @f
+        mov     byte[mousestate], 0
+@@:
+        mov     eax,SF_MOUSE_GET
+        mov     ebx,SSF_WINDOW_POSITION
+        int     0x40
+        cmp     ax, word[skinh]
+        jl      .event
+        sub     ax, word[skinh]
+        xor     dx,dx
+        mov     bx, font_height
+        div     bx
+        movzx   edx,ax
+        shr     eax,16
+        sub     eax, 5 ;window border
+
+        push    edx
+        xor     dx,dx
+        mov     bx, font_width
+        div     bx
+        movzx   eax,ax
+        pop     edx
+
+        mov     ebx, [esp+24h+8] ;DLGTEMPLATE* dlg
+        cmp     edx, [ebx+dlgtemplate.y]
+        jl      .event
+        cmp     eax, [ebx+dlgtemplate.x]
+        jl      .event
+        sub     edx, [ebx+dlgtemplate.y]
+        sub     eax, [ebx+dlgtemplate.x]
+        cmp     edx, [ebx+dlgtemplate.height]
+        jge     .event
+        cmp     eax, [ebx+dlgtemplate.width]
+        jge     .event
+        cmp     dword[ebx+dlgtemplate.size], 0
+        je      .m_menu_end
+        ;если диалоговое окно не стандартное (список значений)
+        cmp     edx, [ebx+44]
+        jl      @f
+        mov     edx, [ebx+44]
+        dec     edx
+@@:
+        mov     ecx, [ebx+48]
+        mov     ecx, [ecx]    ;берем указатель на listitem[1]
+        sub     ecx, [ebx+48] ;ecx - размер одного listitem
+        mov     [ebx+56], edx
+        imul    edx, ecx
+        add     edx, [ebx+48]
+        mov     [ebx+40], edx
+        cmp     byte[mousestate], 1
+        jne     @f
+        mov     [esp+28], edx ;save to eax
+        jmp     .exit
+@@:
+        call    MenuDlgProc.dodraw
+        call    draw_image
+        jmp     .event
+.m_menu_end:
+        cmp     byte[mousestate], 1
+        jne     .event
+        add     ebx, dlgtemplate.size+12
+        mov     ecx, [ebx-4]
+        or      ecx, ecx
+        jz      .event
+
+        push    ebx ecx
+.m_loop:
+        cmp     [ebx+dlgitemtemplate.type], 2 ;button
+        je      .m_comp
+        cmp     [ebx+dlgitemtemplate.type], 3 ;edit
+        je      .m_comp
+        cmp     [ebx+dlgitemtemplate.type], 5 ;check
+        je      .m_comp
+        jmp     .m_next
+align 4
+.m_comp:
+        cmp     [ebx+dlgitemtemplate.x1], eax
+        jg      .m_next
+        cmp     [ebx+dlgitemtemplate.y1], edx
+        jg      .m_next
+        cmp     [ebx+dlgitemtemplate.x2], eax
+        jl      .m_next
+        cmp     [ebx+dlgitemtemplate.y2], edx
+        jl      .m_next
+
+        cmp     [ebx+dlgitemtemplate.type], 2 ;button
+        jne      @f
+        mov     [esp+28+8], ebx ;save to eax
+        pop     ecx ebx
+        jmp     .exit
+@@:
+        cmp     [ebx+dlgitemtemplate.type], 5 ;check
+        jne     @f
+        xor     [ebx+dlgitemtemplate.flags], 10h
+        mov     eax, ebx
+        jmp     .m_new_focus
+@@:
+        mov     eax, [ebx+dlgitemtemplate.flags]
+        and     eax, 4
+        jnz     .m_old_focus
+        mov     eax, ebx
+        jmp     .m_new_focus
+align 4
+.m_next:
+        add     ebx, sizeof.DlgBtn
+        loop    .m_loop
+.m_old_focus:
+        pop     ecx ebx
+        jmp     .event
+align 4
+.m_new_focus:
+        pop     ecx ebx
+        call    DlgClearFocus
+        or      dword[eax+dlgitemtemplate.flags], 4
+
+        sub     ebx, dlgtemplate.size+12
+        push    ebp
+        mov     ebp, ebx
+        call    ManagerDlgProc.dodraw
+        pop     ebp
+        call    draw_image
+        jmp     .event
+align 4
 .exit:
         popad
         push    eax
@@ -151,7 +284,21 @@ GenericBox:
         popad
         ret     8
 
+;input:
+; ebx - pointer to first item
+; ecx - count items
+align 4
+DlgClearFocus:
+        push    ebx ecx
+@@:
+        and     byte [ebx+dlgitemtemplate.flags], not 4
+        add     ebx, sizeof.DlgBtn
+        loop    @b
+        pop     ecx ebx
+        ret
+
 ; int __stdcall ShowGenericBox(DLGTEMPLATE* dlg, void* DlgProc);
+align 16
 ShowGenericBox:
         pushad
         mov     ebx, [esp+20h+4]
@@ -330,6 +477,7 @@ draw_dialog_shadow:
         ret
 
 ; void __stdcall DrawGenericBox(DLGDATA* dlg, void* DlgProc)
+align 16
 DrawGenericBox:
         pushad
         mov     ebx, [esp+24h]
@@ -469,6 +617,7 @@ DrawGenericBox:
         ret     8
 
 ; void __stdcall HideGenericBox(DLGTEMPLATE* dlg, int bRedrawWindow);
+align 16
 HideGenericBox:
 ; void __stdcall HideDialogBox(DLGDATA* dlg, int bRedrawWindow);
 HideDialogBox:
@@ -611,6 +760,7 @@ restore_console_data:
 
 ; int __stdcall menu(void* variants, const char* title, unsigned flags);
 ; variants указывает на текущий элемент в двусвязном линейном списке
+align 16
 menu:
         pop     eax
         push    [cur_height]
@@ -625,11 +775,11 @@ menu_centered_in:
         pushad
         mov     ecx, 60
 ; 40 bytes for dlgtemplate + additional:
-; +40: dd cur_variant
-; +44: dd num_variants
-; +48: dd begin_variant
-; +52: dd end_variant
-; +56: dd cur_variant_idx
+; +40: dd cur_variant   - указатель на массив listitem[num_variants]
+; +44: dd num_variants  - сколько элементов в списке
+; +48: dd begin_variant - указатель на listitem[0]
+; +52: dd end_variant   - указатель на listitem[num_variants-1]
+; +56: dd cur_variant_idx - индекс выбранного элемента от 0 до num_variants-1
         call    xpgalloc
         test    eax, eax
         jnz     @f
@@ -640,7 +790,7 @@ menu_centered_in:
 @@:
         mov     ebx, eax
         mov     eax, 1
-        test    byte [esp+20h+28], 1
+        test    byte [esp+20h+28], 1 ;unsigned flags
         jz      @f
         mov     al, 3
 @@:
@@ -651,7 +801,7 @@ menu_centered_in:
 ; Находим ширину и высоту окна
         xor     eax, eax
         xor     ecx, ecx
-        mov     esi, [esp+20h+20]
+        mov     esi, [esp+20h+20] ;void* variants
         mov     [ebx+40], esi
         mov     dword [ebx+56], eax
 @@:
@@ -780,6 +930,7 @@ menu_centered_in:
         popad
         ret     28
 
+align 16
 MenuDlgProc:
         mov     eax, [esp+8]
         cmp     al, 1
@@ -944,7 +1095,7 @@ MenuDlgProc:
         jnz     @f
         movzx   ecx, byte [eax+11]
         sub     ecx, '0'
-        push    24
+        push    SF_CD
         pop     eax
         mov     ebx, edx
         int     40h
@@ -1091,9 +1242,9 @@ get_ascii_char:
         xor     ecx, ecx
         cmp     al, 1
         sbb     ecx, -2
-        push    26
+        push    SF_SYSTEM_GET
         pop     eax
-        push    2
+        push    SSF_KEYBOARD_LAYOUT
         pop     ebx
         mov     edx, layout
         int     0x40
@@ -1101,6 +1252,65 @@ get_ascii_char:
 ; translate scancode to ASCII
         movzx   eax, byte [layout+eax]
         ret
+
+struct DlgLbl
+type           dd      1
+x1             dd      ?
+y1             dd      ?
+x2             dd      ?
+y2             dd      ?
+text           dd      ?
+flags          dd      ?
+ends
+
+struct DlgBtn
+type           dd      2
+x1             dd      ?
+y1             dd      ?
+x2             dd      ?
+y2             dd      ?
+text           dd      ?
+flags          dd      ?
+ends
+
+struct DlgEdit
+type           dd      3
+x1             dd      ?
+y1             dd      ?
+x2             dd      ?
+y2             dd      ?
+text           dd      ?
+flags          dd      ?
+ends
+
+struct DlgLine
+type           dd      4
+x1             dd      ?
+y1             dd      ?
+x2             dd      ?
+y2             dd      ?
+               dq      0
+ends
+
+struct DlgCheck
+type           dd      5
+x1             dd      ?
+y1             dd      ?
+x2             dd      ?
+y2             dd      ?
+text           dd      ?
+flags          dd      ?
+ends
+
+struct DlgList
+type           dd      6
+x1             dd      ?
+y1             dd      ?
+x2             dd      ?
+y2             dd      ?
+text           dd      ?
+flags          dd      ?
+ends
 
 virtual at 0
 dlgitemtemplate:
@@ -1150,6 +1360,7 @@ end virtual
 ;               DLGITEMTEMPLATE items[]; /* array of dialog items */
 ;       }
 ; int __stdcall DialogBox(DLGDATA* dlg);
+align 16
 DialogBox:
         push    ManagerDlgProc
         push    dword [esp+8]
@@ -1170,6 +1381,7 @@ DrawDialogBox:
         call    DrawGenericBox
         ret     4
 
+align 16
 ManagerDlgProc:
         mov     ebp, ebx
         mov     eax, [esp+8]
@@ -1177,11 +1389,16 @@ ManagerDlgProc:
         jz      .draw
         dec     eax
         jz      .key
+        ;sub     eax, 4
+        ;jz      .mouse
         xor     eax, eax
         ret     16
 .draw:
         call    .dodraw
         ret     16
+;.mouse:
+        ;todo
+        ;ret     16
 .key:
 ; find item with focus
         add     ebx, dlgtemplate.size+12
@@ -1397,6 +1614,7 @@ ManagerDlgProc:
         inc     dword [edx+4]
 @@:     jmp     .ret_test
 
+align 4
 .dodraw:
         or      [cursor_x], -1
         or      [cursor_y], -1
@@ -1430,6 +1648,7 @@ label draw_functions dword
 draw_functions_num = ($ - draw_functions) / 4
 endg
 
+align 4
 draw_static_text:
 ; рисуем статический текст
         mov     ah, [dialog_main_color]
@@ -1531,6 +1750,7 @@ draw_text_esi:
 .ret2:
         ret
 
+align 4
 draw_button:
         mov     ecx, dialog_colors
         test    byte [ebp+dlgtemplate.flags], 2
@@ -1544,6 +1764,7 @@ draw_button:
 @@:
         jmp     draw_text
 
+align 4
 draw_editbox:
         mov     edx, [ebx+dlgitemtemplate.data]
         test    [ebx+dlgitemtemplate.flags], 4
@@ -1572,6 +1793,7 @@ draw_editbox:
         add     esi, 12
         jmp     draw_text_esi
 
+align 4
 dlgitem_get_console_ptr:
         mov     eax, [ebx+dlgitemtemplate.x1]
         mov     edx, [ebx+dlgitemtemplate.y1]
@@ -1580,6 +1802,7 @@ dlgitem_get_console_ptr:
         add     edx, [ebp+dlgtemplate.y]
         jmp     get_console_ptr
 
+align 4
 draw_h_separator:
 ; рисуем горизонтальный разделитель
         call    dlgitem_get_console_ptr
@@ -1601,6 +1824,7 @@ draw_h_separator:
 .done:
         ret
 
+align 4
 draw_checkbox:
 ; рисуем флажок
         call    dlgitem_get_console_ptr
@@ -1636,12 +1860,16 @@ draw_checkbox:
 @@:
         lodsb
         test    al, al
-        jz      .ret
+        jz      .correct
         stosw
         loop    @b
+		ret
+.correct:
+		sub     [ebx+dlgitemtemplate.x2], ecx
 .ret:
         ret
 
+align 4
 draw_listbox:
 ; рисуем список
         call    dlgitem_get_console_ptr
@@ -1750,6 +1978,7 @@ draw_listbox:
 .noscrollbar:
         ret
 
+align 4
 listbox_key:
         mov     edx, [ebx+dlgitemtemplate.data]
         cmp     al, 0x48
@@ -1912,6 +2141,7 @@ SayErrTitle:
 ; int __stdcall Message(const char* title,
 ;                       int num_strings, const char* strings[],
 ;                       int num_buttons, const char* buttons[]);
+align 16
 Message:
         push    1
 @@:

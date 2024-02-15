@@ -71,6 +71,7 @@ endp
 proc get_real_length ;////////////////////////////////////////////////////////
 ;-----------------------------------------------------------------------------
 	mov	eax,[esi+EDITOR_LINE_DATA.Size]
+
     @@: cmp	byte[esi+eax+sizeof.EDITOR_LINE_DATA-1],' '
 	jne	@f
 	dec	eax

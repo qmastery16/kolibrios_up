@@ -1,19 +1,24 @@
-#include "tp.c"
-/* INCLUDE */
-const char header[]="TinyPy for kolibriOS";
-extern _stdcall void kolibri_dbg_init(tp_vm *tp);
+#include "tinypy.c"
 
-void main(int argc, const char *argv[]) {
-    tp_vm *tp = tp_init(argc, argv);
-    kolibri_dbg_init(tp);
-    kolibri_init(tp);
-    CONSOLE_INIT(header);
-    /* INIT */
-    tp_call(tp,"py2bc","tinypy",tp_None);
-    con_printf("Done");
+extern void init_std_modules(TP);
+
+int main(int argc, char *argv[]) {
+    tp_vm *tp = tp_init(argc,argv);
+    
+    #ifdef CONIO
+    console_load();
+    #endif
+    
+    init_std_modules(tp);
+    tp_ez_call(tp,"py2bc","tinypy",tp_None);
     tp_deinit(tp);
-    kol_exit();
-    return;
+    
+    #ifdef CONIO
+    if(con_enabled==1){
+        con_exit(0);
+    }
+    #endif
+    
+    return(0);
 }
 
-/**/

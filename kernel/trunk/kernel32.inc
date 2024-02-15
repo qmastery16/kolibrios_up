@@ -1,11 +1,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                              ;;
-;; Copyright (C) KolibriOS team 2004-2016. All rights reserved. ;;
+;; Copyright (C) KolibriOS team 2004-2022. All rights reserved. ;;
 ;;  Distributed under terms of the GNU General Public License.  ;;
 ;;                                                              ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-$Revision: 6926 $
+$Revision: 9715 $
 
 include "core/sync.inc"         ; macros for synhronization objects
 include "core/sys32.inc"        ; process management
@@ -24,8 +24,12 @@ include "core/string.inc"
 include "core/v86.inc"          ; 16-bit mode machine
 include "core/irq.inc"          ; interrupt handling functions
 include "core/apic.inc"
+include "core/hpet.inc"
 include "core/timers.inc"
 include "core/clipboard.inc"
+include "core/slab.inc"
+
+include "acpi/acpi.inc"
 
 include "posix/posix.inc"
 
@@ -43,6 +47,7 @@ include "gui/font.inc"
 include "gui/button.inc"
 include "gui/mouse.inc"         ; cursor
 include "gui/skincode.inc"      ; windows' skin
+include "gui/background.inc"
 
 include "hid/keyboard.inc"
 include "hid/mousedrv.inc"
@@ -68,6 +73,7 @@ include "fs/fs_lfn.inc"         ; sysfunction 70
 include "network/stack.inc"
 
 include "crc.inc"               ; checksums
+include "unicode.inc"
 
 ; include "imports.inc"
 ; include "core/ext_lib.inc"

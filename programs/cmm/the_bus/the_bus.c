@@ -6,16 +6,11 @@ D O N K E Y
 Copyright (C) 2008 O.Bogomaz
 */
 
-#ifndef AUTOBUILD
-#include "lang.h--"
-#endif
-
 #define MEMSIZE 1024 * 60;
 
 #include "..\lib\kolibri.h"
 #include "..\lib\random.h"
 
-#include "..\lib\obj\libio.h"
 #include "..\lib\obj\libimg.h"
 
 libimg_image menu;
@@ -112,131 +107,125 @@ void DrawObstacle(signed int x, y) {
 	}
 	DrawBar(x, y-don_step_y, don_w, don_step_y, COLOR_ROAD);
 	if (y>0) && (y<don_step_y) DrawBar(x, 0, don_w, y, COLOR_ROAD);
-	if (image_h>0) DrawLibImage(objects.image, x, y, don_w, image_h, 0, don_offset_y); 
+	if (image_h>0) objects.draw(x, y, don_w, image_h, 0, don_offset_y); 
 }
-void DrawBus(dword x, y) { DrawLibImage(objects.image, x, y, bus_w, bus_h, 0, 444); }
-void DrawBoom(dword x, y) { DrawLibImage(objects.image, x, y, 78, 66, 0, 536); }
-void DrawHighway() { DrawLibImage(road.image, 0,0, WIN_X, WIN_Y, 0, 0); }
-void DrawMenuBackground() { DrawLibImage(menu.image, 0, 0, WIN_X, WIN_Y, 0, 0); }
+void DrawBus(dword x, y) { objects.draw(x, y, bus_w, bus_h, 0, 444); }
+void DrawBoom(dword x, y) { objects.draw(x, y, 78, 66, 0, 536); }
+void DrawHighway() { road.draw(0,0, WIN_X, WIN_Y, 0, 0); }
+void DrawMenuBackground() { menu.draw(0, 0, WIN_X, WIN_Y, 0, 0); }
 
 void main()
 {
 	randomize();
 	StartNewGame();
 
-	load_dll(libio,  #libio_init,1);
 	load_dll(libimg, #libimg_init,1);
-	Libimg_LoadImage(#menu, abspath("menu.png"));
-	Libimg_LoadImage(#road, abspath("road.png"));
-	Libimg_LoadImage(#objects, abspath("objects.png"));
+	menu.load(abspath("menu.png"));
+	road.load(abspath("road.png"));
+	objects.load(abspath("objects.png"));
 	
-	loop()
+	loop() switch(@WaitEventTimeout(frame_timeout))
 	{
-		WaitEventTimeout(frame_timeout);
+		case evKey: 
+			GetKeys();
+			if (key_scancode == SCAN_CODE_ESC)
+			{
+				if (screen_type==SCR_GAME) SetScreen(SCR_MENU_MAIN);
+				else if (screen_type==SCR_MENU_MAIN) ExitProcess();
+			}
+			if (key_scancode == SCAN_CODE_DOWN) && (screen_type==SCR_MENU_MAIN)
+			{
+				if (active_menu_item<>3) active_menu_item++; ELSE active_menu_item=0;
+				DrawMenuList();
+			}
+			if (key_scancode == SCAN_CODE_UP) && (screen_type==SCR_MENU_MAIN)
+			{
+				if (active_menu_item<>0) active_menu_item--; ELSE active_menu_item=3;
+				DrawMenuList();
+			}
+			if (key_scancode == SCAN_CODE_ENTER) && (screen_type==SCR_MENU_MAIN)
+			{
+				if (active_menu_item==0)
+				{
+					StartNewGame();
+					SetScreen(SCR_GAME);
+				}
+				if (active_menu_item==1) notify(CONTROLS_TEXT);
+				if (active_menu_item==2) notify(ABOUT_TEXT);
+				if (active_menu_item==3) ExitProcess();	
+			}				
+			if (key_scancode == SCAN_CODE_SPACE) && (screen_type==SCR_GAME)
+			{
+				DrawBar(bus_x*80+200, bus_y, bus_w, bus_h+1, COLOR_ROAD);
+				if (bus_x==1) bus_x=0; else bus_x=1;
+			}
+			if (key_scancode == SCAN_CODE_LEFT) && (screen_type==SCR_GAME)
+			{
+				if (bus_x==0) break;
+				DrawBar(bus_x*80+200, bus_y, bus_w, bus_h+1, COLOR_ROAD);
+				bus_x=0;
+			}
+			if (key_scancode == SCAN_CODE_RIGHT) && (screen_type==SCR_GAME)
+			{
+				if (bus_x==1) break;
+				DrawBar(bus_x*80+200, bus_y, bus_w, bus_h+1, COLOR_ROAD);
+				bus_x=1;
+			}
+			if (key_scancode == SCAN_CODE_KEY_P)
+			{
+				if (screen_type==SCR_MENU_MAIN) break;
+				else if (screen_type==SCR_GAME) SetScreen(SCR_PAUSE); 
+				else if (screen_type==SCR_PAUSE) SetScreen(SCR_GAME); 
+			}
+			break;
+			
+		case evReDraw:
+			DefineAndDrawWindow(250,150,WIN_X-1,WIN_Y-1,0x01,0,THE_BUS_TEXT,0); //0x74 is also possible if you fix bottom border
+			DrawScreen();
+			break;
+			
+		case evButton:
+			ExitProcess();
+			break;
+			
+		default:
+			if (screen_type==SCR_GAME) 
+			{
+				if ((don_x == bus_x)&&(don_y + don_h > bus_y )&&(don_y < bus_y + don_h )) {
+					lifes--;
+					DrawBus(bus_x*80+200,bus_y);
+					DrawBoom(bus_x*80+180,bus_y+10);
+					pause(150);
+					GetNewObstacle(RAND);
+					DrawScreen();
+				}
 
-		switch(EAX & 0xFF)
-		{
-			case evKey: 
-				GetKeys();
-				if (key_scancode == SCAN_CODE_ESC)
-				{
-					if (screen_type==SCR_GAME) SetScreen(SCR_MENU_MAIN);
-					else if (screen_type==SCR_MENU_MAIN) ExitProcess();
+				if (lifes==0) {
+					DrawGameOverMessage();
+					break;
 				}
-				if (key_scancode == SCAN_CODE_DOWN) && (screen_type==SCR_MENU_MAIN)
-				{
-					if (active_menu_item<>3) active_menu_item++; ELSE active_menu_item=0;
-					DrawMenuList();
-				}
-				if (key_scancode == SCAN_CODE_UP) && (screen_type==SCR_MENU_MAIN)
-				{
-					if (active_menu_item<>0) active_menu_item--; ELSE active_menu_item=3;
-					DrawMenuList();
-				}
-				if (key_scancode == SCAN_CODE_ENTER) && (screen_type==SCR_MENU_MAIN)
-				{
-					if (active_menu_item==0)
-					{
-						StartNewGame();
-						SetScreen(SCR_GAME);
-					}
-					if (active_menu_item==1) notify(CONTROLS_TEXT);
-					if (active_menu_item==2) notify(ABOUT_TEXT);
-					if (active_menu_item==3) ExitProcess();	
-				}				
-				if (key_scancode == SCAN_CODE_SPACE) && (screen_type==SCR_GAME)
-				{
-					DrawBar(bus_x*80+200, bus_y, bus_w, bus_h+1, COLOR_ROAD);
-					if (bus_x==1) bus_x=0; else bus_x=1;
-				}
-				if (key_scancode == SCAN_CODE_LEFT) && (screen_type==SCR_GAME)
-				{
-					if (bus_x==0) break;
-					DrawBar(bus_x*80+200, bus_y, bus_w, bus_h+1, COLOR_ROAD);
-					bus_x=0;
-				}
-				if (key_scancode == SCAN_CODE_RIGHT) && (screen_type==SCR_GAME)
-				{
-					if (bus_x==1) break;
-					DrawBar(bus_x*80+200, bus_y, bus_w, bus_h+1, COLOR_ROAD);
-					bus_x=1;
-				}
-				if (key_scancode == SCAN_CODE_KEY_P)
-				{
-					if (screen_type==SCR_MENU_MAIN) break;
-					else if (screen_type==SCR_GAME) SetScreen(SCR_PAUSE); 
-					else if (screen_type==SCR_PAUSE) SetScreen(SCR_GAME); 
-				}
-				break;
-				
-			case evReDraw:
-				DefineAndDrawWindow(250,150,WIN_X-1,WIN_Y-1,0x01,0,THE_BUS_TEXT,0); //0x74 is also possible if you fix bottom border
-				DrawScreen();
-				break;
-				
-			case evButton:
-				ExitProcess();
-				break;
-				
-			default:
-				if (screen_type==SCR_GAME) 
-				{
-					if ((don_x == bus_x)&&(don_y + don_h > bus_y )&&(don_y < bus_y + don_h )) {
-						lifes--;
-						DrawBus(bus_x*80+200,bus_y);
-						DrawBoom(bus_x*80+180,bus_y+10);
-						pause(150);
-						GetNewObstacle(RAND);
-						DrawScreen();
-					}
-	
-					if (lifes==0) {
-						DrawGameOverMessage();
-						break;
-					}
 
-					don_y += don_step_y;
+				don_y += don_step_y;
 
-					if (don_y - don_step_y >= WIN_Y)
-					{
-						GetNewObstacle(RAND);
-						score++;
-						bus_y -= don_step_y+1;
-						DrawBar(bus_x*80+200, bus_y+bus_h, bus_w, don_step_y+1, COLOR_ROAD);
-						WriteScore();
-					}
-
-					if (score) && (score % 15 == 0) 
-					{
-						score++;
-						NewLevel();
-						DrawScreen();
-						don_step_y++;
-					}
-
-					DrawRoad();
+				if (don_y - don_step_y >= WIN_Y)
+				{
+					GetNewObstacle(RAND);
+					score++;
+					bus_y -= don_step_y+1;
+					DrawBar(bus_x*80+200, bus_y+bus_h, bus_w, don_step_y+1, COLOR_ROAD);
+					WriteScore();
 				}
-		}
+
+				if (score) && (score % 15 == 0) 
+				{
+					score++;
+					NewLevel();
+					DrawScreen();
+					don_step_y++;
+				}
+
+				DrawRoad();
+			}
 	}
 }
 
@@ -257,7 +246,7 @@ void StartNewGame()
 }
 
 void WriteScore() {
-	DrawLibImage(road.image, 20, 166, 120, 24, 20, 164);
+	road.draw(20, 166, 120, 24, 20, 164);
 	WriteText(20, 140, 0x81, 0xFFFFFF, SCORE_TEXT);
 	WriteText(20, 166, 0x81, 0xFFFFFF, itoa(score));
 }

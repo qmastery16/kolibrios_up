@@ -2,7 +2,7 @@
 ; структуры и функции для рисования 3d объектов
 ;
 
-offs_zbuf_pbuf equ 24 ;const. from 'zbuffer.inc'
+include '../../develop/libraries/TinyGL/asm_fork/zbuffer.inc'
 
 struct obj_3d
 	poi_data dd ? ;указатель на координаты вершин
@@ -60,9 +60,9 @@ key_select db 'col_select',0
 
 txt_err_save_img_file:
 if lang eq ru
-	db 'Не могу сохранить файл.',0
+	db '"Не могу сохранить файл." -W',0
 else
-	db 'Can',39,'t save file.',0
+	db '"Can',39,'t save file." -W',0
 end if
 
 align 4
@@ -348,7 +348,7 @@ pushad
 		je .end
 		finit
 		imul eax,12
-		stdcall mem.Alloc, eax
+		stdcall mem.Alloc,eax
 		mov [ecx+obj_3d.normals_tri_data],eax
 
 		mov edx,[ecx+obj_3d.tri_data]
@@ -356,8 +356,7 @@ pushad
 		mov ecx,[ecx+obj_3d.poi_data]
 align 4
 		@@:
-			mov edi,ebp
-			sub edi,36 ;tbl2
+			lea edi,[ebp-36] ;tbl2
 			movzx esi,word[edx] ;1-я вершина
 			imul esi,12
 			add esi,ecx
@@ -377,8 +376,7 @@ align 4
 			movsd
 			movsd
 
-			mov esi,ebp
-			sub esi,72 ;tbl1
+			lea esi,[ebp-72] ;tbl1
 			sub edi,36 ;tbl2
 			;v1 <-> v2
 			fld dword[edi+12]
@@ -638,6 +636,8 @@ proc obj_init, o_data:dword
 			;поиск материалов граней
 			shl edx,3
 			add esi,edx
+			cmp esi,ecx
+			jge .end_points ;если нет блока с материалом
 			cmp word[esi],CHUNK_FACEMAT
 			jne .end_points
 				mov [edi+obj_3d.mat1_data],esi
@@ -804,7 +804,7 @@ proc draw_3d uses eax ebx ecx edi, o_data:dword
 	cmp dword[edi+obj_3d.poi_count],2
 	jl .end_f
 	stdcall [glClear], GL_COLOR_BUFFER_BIT + GL_DEPTH_BUFFER_BIT ;очистим буфер цвета и глубины
-	stdcall [glPushMatrix]
+	call [glPushMatrix]
 	bt dword[draw_mode],bit_light
 	jnc @f
 		call SetLight
@@ -825,20 +825,26 @@ if version_edit eq 0
 	bt dword[draw_mode],bit_faces_mat
 	jnc @f
 		mov eax,[edi+obj_3d.mat1_data]
+		or eax,eax
+		jnz .b_found
+			stdcall [buf2d_draw_text], buf_ogl, buf_1,txt_mat_null,5,3,[color_select]
+			jmp .mat_null ;если нет материала, рисуем все грани одним цветом
 		.b_found:
-		cmp eax,0
-		je .end_points
 			mov ebx,eax
 			stdcall get_mat_color, eax
 			stdcall draw_3d_faces_color, edi,ebx,eax
 			stdcall found_mat_faces, ebx
-		jmp .b_found
+			or eax,eax
+			jnz .b_found
+		jmp .end_points
+		
 	@@:
 end if
 
 	;рисование граней без цветов материалов
 	bt dword[draw_mode],bit_faces
 	jnc .end_triangles
+	.mat_null:
 	cmp dword[edi+obj_3d.tri_count],0
 	je .end_triangles
 	cmp dword[edi+obj_3d.poi_count],0
@@ -935,6 +941,8 @@ align 4
 		@@:
 			bt dword[draw_mode],bit_light
 			jnc .norm0
+			or edx,edx
+			jz .norm0 ;если нормалей нет
 				stdcall [glNormal3fv], edx
 				add edx,12
 			.norm0:
@@ -966,10 +974,10 @@ if version_edit eq 1
 		stdcall [glEnd]
 
 		stdcall [glColor3ub],[color_select+2],[color_select+1],[color_select]
-		stdcall [glPushMatrix]
+		call [glPushMatrix]
 			stdcall [glTranslatef], [eax],[eax+4],[eax+8]
 			stdcall [gluSphere], [qObj], [sph_radius], 8,8
-		stdcall [glPopMatrix]
+		call [glPopMatrix]
 	@@:
 
 	;рисование выделенных точек
@@ -977,7 +985,7 @@ if version_edit eq 1
 	je .end_select
 		mov ecx,dword[obj_poi_sel_c]
 		stdcall [glColor3ub],[color_select+2],[color_select+1],[color_select]
-		stdcall dword[tl_node_poi_get_info], tree3,0
+		stdcall [tl_node_poi_get_info], tree3,0
 align 4
 		@@:
 			cmp eax,0
@@ -987,26 +995,26 @@ align 4
 			jne .next_sel
 			stdcall [tl_node_poi_get_data], tree3,ebx
 			mov eax,[eax]
-			stdcall [glPushMatrix]
+			call [glPushMatrix]
 				stdcall [glTranslatef], [eax],[eax+4],[eax+8]
 				stdcall [gluSphere], [qObj], [sph_radius], 4,4
-			stdcall [glPopMatrix]
+			call [glPopMatrix]
 			dec ecx
 			jz .end_select
 			.next_sel:
-			stdcall dword[tl_node_poi_get_next_info], tree3,ebx
+			stdcall [tl_node_poi_get_next_info], tree3,ebx
 			jmp @b
     .end_select:
 end if
 
-	stdcall [glPopMatrix]
+	call [glPopMatrix]
 if version_edit eq 1
 	cmp dword[obj_poi_sel_c],0
 	je @f
 		stdcall [buf2d_draw_text], buf_ogl, buf_1,txt_select_vert,5,3,[color_select]
 	@@:
 end if
-	stdcall [kosglSwapBuffers]
+	call [kosglSwapBuffers]
 	.end_f:
 	ret
 endp
@@ -1080,9 +1088,10 @@ mnu_make_scrshot:
 	pushad
 	copy_path open_dialog_name,communication_area_default_path,file_name,0
 	mov [OpenDialog_data.type],1
+	stdcall [OpenDialog_Set_file_ext],OpenDialog_data,Filter.3 ;.png
 	stdcall [OpenDialog_Start],OpenDialog_data
-	cmp [OpenDialog_data.status],2
-	je .end_save_file
+	cmp [OpenDialog_data.status],1
+	jne .end_save_file
 		;код при удачном открытии диалога
 		mov dword[png_data],0
 
@@ -1170,6 +1179,8 @@ pop ebx eax
 align 4
 proc found_mat_faces uses ebx, p_mat:dword
 	mov eax,[p_mat]
+	or eax,eax
+	jz @f
 	add eax,[eax+2]
 	cmp word[eax],CHUNK_FACEMAT
 	je @f

@@ -8,7 +8,7 @@
 ;   Heavyiron 01.12.2013 - new logic
 ;---------------------------------------------------------------------
 appname equ 'RDsave '
-version equ '1.43'
+version equ '1.44'
 debug	equ no
 
 use32	     ; включить 32-битный режим ассемблера
@@ -31,7 +31,8 @@ include '../../../debug.inc'
 end if
 include '../../../proc32.inc'
 include '../../../dll.inc'
-include '../../../develop/libraries/box_lib/load_lib.mac'
+include '../../../KOSfuncs.inc'
+include '../../../load_lib.mac'
 include '../../../develop/libraries/box_lib/trunk/box_lib.mac'
 include 'str.inc'
 
@@ -51,9 +52,9 @@ load_libraries l_libs_start,end_l_libs
 
 	stdcall dll.Init,[init_lib]
 
-	invoke	ini_get_int,ini_file,asettings,aautoclose,0
+	invoke	ini_get_int,ini_file,ini_section,aautoclose,0
 	mov	[autoclose],eax
-	invoke	ini_get_str,ini_file,apath,apath,fname_buf,4096,path
+	invoke	ini_get_str,ini_file,ini_section,apath,fname_buf,4096,path
 	stdcall _lstrcpy,ini_path,fname_buf
 	stdcall _lstrcpy,filename_area,start_temp_file_name
 
@@ -243,7 +244,7 @@ check_for_error:		      ;Обработчик ошибок
 print_err:
 	stdcall _lstrlen,ini_path
 	pusha
-	invoke	ini_set_str,ini_file,apath,apath,ini_path,eax
+	invoke	ini_set_str,ini_file,ini_section,apath,ini_path,eax
 	popa
 	stdcall _lstrcpy,msg,edx
 	cmp	[hidden],1
@@ -315,8 +316,8 @@ draw_PathShow:
 save_ini:
 	pusha
 	stdcall _lstrlen,fname_buf
-	invoke	ini_set_str,ini_file,apath,apath,fname_buf,eax
-	invoke	ini_set_int,ini_file,asettings,aautoclose,[autoclose]
+	invoke	ini_set_str,ini_file,ini_section,apath,fname_buf,eax
+	invoke	ini_set_int,ini_file,ini_section,aautoclose,[autoclose]
 	popa
 	ret
 ;---------------------------------------------------------------------
@@ -338,9 +339,13 @@ draw_window:
 	mcall  48,3,sc,sizeof.system_colors
 	mcall	12,1
 
-	mov	edx,[sc.work]
-	or	edx,0x34000000
-	mcall	0,<200,400>,<200,130>, , ,title
+	mcall  48,4
+	mov ecx,200*65536+111
+	add ecx,eax
+
+	mov edx,[sc.work]
+	or  edx,0x34000000
+	mcall	0,<200,400>,, , ,title
 
 ;buttons
 	mcall	8,<198,70>,<68,20>,1,[sc.work_button]
@@ -359,7 +364,7 @@ draw_window:
 	m2m	dword [frame_data.font_backgr_color],[sc.work]
 	m2m dword [frame_data.font_color],[sc.work_text]
 	m2m dword [frame_data.ext_fr_col],[sc.work_graph]
-	m2m dword [frame_data.int_fr_col],[sc.work_3d_light]
+	m2m dword [frame_data.int_fr_col],[sc.work_light]
 	
 	push	dword frame_data
 	call	[Frame_draw]
@@ -489,27 +494,16 @@ system_dir_Boxlib	db '/sys/lib/box_lib.obj',0
 system_dir_ProcLib	db '/sys/lib/proc_lib.obj',0
 system_dir_libini	db '/sys/lib/libini.obj',0
 ;---------------------------------------------------------------------
-head_f_i:
-head_f_l	db 'System error',0
-
-err_message_found_lib1	db 'box_lib.obj - Not found!',0
-err_message_found_lib2	db 'proc_lib.obj - Not found!',0
-err_message_found_lib3	db 'libini.obj - Not found!',0
-
-err_message_import1	db 'box_lib.obj - Wrong import!',0
-err_message_import2	db 'proc_lib.obj - Wrong import!',0
-err_message_import3	db 'libini.obj - Wrong import!',0
-;---------------------------------------------------------------------
 l_libs_start:
 
-library01  l_libs system_dir_Boxlib+9, cur_dir_path, library_path, system_dir_Boxlib, \
-err_message_found_lib1, head_f_l, Box_lib_import, err_message_import1, head_f_i
+library01  l_libs system_dir_Boxlib+9, library_path, system_dir_Boxlib, \
+ Box_lib_import
 
-library02  l_libs system_dir_ProcLib+9, cur_dir_path, library_path, system_dir_ProcLib, \
-err_message_found_lib2, head_f_l, ProcLib_import, err_message_import2, head_f_i
+library02  l_libs system_dir_ProcLib+9, library_path, system_dir_ProcLib, \
+ ProcLib_import
 
-library03  l_libs system_dir_libini+9, cur_dir_path, library_path, system_dir_libini, \
-err_message_found_lib3, head_f_l, libini_import, err_message_import3, head_f_i
+library03  l_libs system_dir_libini+9, library_path, system_dir_libini, \
+ libini_import
 
 end_l_libs:
 ;---------------------------------------------------------------------
@@ -559,8 +553,7 @@ align 4
 ProcLib_import:
 OpenDialog_Init 	dd aOpenDialog_Init
 OpenDialog_Start	dd aOpenDialog_Start
-	dd	0
-	dd	0
+	dd	0,0
 aOpenDialog_Init	db 'OpenDialog_init',0
 aOpenDialog_Start	db 'OpenDialog_start',0
 ;---------------------------------------------------------------------
@@ -588,10 +581,9 @@ Box_lib_import:
 PathShow_prepare	dd sz_PathShow_prepare
 PathShow_draw		dd sz_PathShow_draw
 Frame_draw		dd sz_Frame_draw
-			dd 0
-			dd 0
+			dd 0,0
 
-;aEdit_box_draw          db 'edit_box',0
+;aEdit_box_draw          db 'edit_box_draw',0
 ;aEdit_box_key           db 'edit_box_key',0
 ;aEdit_box_mouse         db 'edit_box_mouse',0
 ;aVersion_ed             db 'version_ed',0
@@ -627,8 +619,7 @@ ini_get_str  dd aini_get_str
 ini_get_int  dd aini_get_int
 ini_set_str  dd aini_set_str
 ini_set_int  dd aini_set_int
-	     dd 0
-	     dd 0
+	     dd 0,0
 a_init	     db 'lib_init',0
 aini_get_str db 'ini_get_str',0
 aini_get_int db 'ini_get_int',0
@@ -636,16 +627,15 @@ aini_set_str db 'ini_set_str',0
 aini_set_int db 'ini_set_int',0
 ;---------------------------------------------------------------------
 
+ini_file db  '/sys/settings/app.ini',0
+ini_section db 'RDSave',0
 apath db 'path',0
-asettings db 'settings',0
 aautoclose db 'autoclose',0
 path	db '/hd2/1/kolibri.img',0
-ini_file db  '/sys/settings/rdsave.ini',0
-;ini_file db  '/sys/rdsave.ini',0
 ;---------------------------------------------------------------------
 is_notify:
     dd	  7, 0, ok, 0, 0
-    db	  "/rd/1/@notify", 0
+    db	  "/sys/@notify", 0
 
 read_folder:
 .subfunction	dd 1

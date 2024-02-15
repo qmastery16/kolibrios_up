@@ -7,6 +7,7 @@ macro ADD_OP a,b,c
 include 'opinfo.inc'
 
 ;указатели на функции ;static void (*op_table_func[])(GLContext *,GLParam *)=
+align 4
 op_table_func:
 macro ADD_OP a,b,c
 {
@@ -15,10 +16,21 @@ macro ADD_OP a,b,c
 include 'opinfo.inc'
 
 ;число параметров в функциях
+align 4
 op_table_size:
 macro ADD_OP a,b,c
 {
 	dd b+1
+}
+include 'opinfo.inc'
+
+;коды функций у которых нет входных параметров
+align 4
+macro ADD_OP a,b,c
+{
+if b eq 0
+	op_#a dd OP_#a
+end if
 }
 include 'opinfo.inc'
 
@@ -30,8 +42,7 @@ proc find_list uses ebx, context:dword, list:dword
 	mov eax,[context]
 	mov eax,[eax+GLContext.shared_state]
 	mov ebx,[list]
-	shl ebx,2
-	add eax,ebx
+	lea eax,[eax+4*ebx]
 	mov eax,[eax]
 	ret
 endp
@@ -55,10 +66,9 @@ proc delete_list uses eax ebx ecx edx, context:dword, list:dword
 	.end_w:
 
 	stdcall gl_free,edx
-	mov ecx,[list]
-	shl ecx,2
 	mov ebx,[ebx+GLContext.shared_state] ;ebx = &context.shared_state.lists
-	add ebx,ecx
+	mov ecx,[list]
+	lea ebx,[ebx+4*ecx]
 	mov dword[ebx],0 ;=NULL
 	ret
 endp
@@ -77,8 +87,7 @@ proc alloc_list uses ebx ecx, context:dword, list:dword
 	mov ebx,[context]
 	mov ebx,[ebx+GLContext.shared_state]
 	mov ecx,[list]
-	shl ecx,2
-	add ebx,ecx
+	lea ebx,[ebx+4*ecx]
 	mov [ebx],eax ;context.shared_state.lists[list]=l
 	ret
 endp
@@ -116,18 +125,15 @@ proc gl_compile_op, context:dword, p:dword
 pushad
 	mov edx,[context]
 
-	lea ebx,[op_table_size]
 	mov ecx,[p]
-	mov ecx,[ecx]
-	shl ecx,2
-	add ecx,ebx
+	mov ecx,[ecx] ;код операции
+	lea ecx,[op_table_size+4*ecx]
 	mov ecx,[ecx] ;ecx = кол-во параметров в компилируемой функции
 	mov ebx,[edx+GLContext.current_op_buffer_index]
 	mov eax,[edx+GLContext.current_op_buffer]
 
 	; we should be able to add a NextBuffer opcode
-	mov esi,ebx
-	add esi,ecx
+	lea esi,[ebx+ecx]
 	cmp esi,(OP_BUFFER_MAX_SIZE-2)
 	jle @f
 		mov edi,eax
@@ -135,9 +141,7 @@ pushad
 		mov dword[eax+offs_gpbu_next],0 ;=NULL
 
 		mov dword[edi+offs_gpbu_next],eax
-		mov esi,ebx
-		shl esi,2
-		add esi,edi
+		lea esi,[edi+4*ebx]
 		mov dword[esi+offs_gpbu_ops],OP_NextBuffer
 		mov dword[esi+offs_gpbu_ops+4],eax
 
@@ -147,9 +151,7 @@ pushad
 
 	mov esi,[p]
 	@@:
-		mov edi,ebx
-		shl edi,2
-		add edi,eax
+		lea edi,[eax+4*ebx]
 		movsd
 		inc ebx
 	loop @b
@@ -326,19 +328,13 @@ proc glNewList uses eax ebx, list:dword, mode:dword
 endp
 
 align 4
-proc glEndList uses eax ebx
-locals
-	p dd ?
-endl
+proc glEndList uses eax
 	call gl_get_context
 
 ;  assert(c->compile_flag == 1);
 
 	; end of list
-	mov dword[p],OP_EndList
-	mov ebx,ebp
-	sub ebx,4 ;=sizeof(dd)
-	stdcall gl_compile_op,eax,ebx
+	stdcall gl_compile_op,eax,op_EndList
 
 	mov dword[eax+GLContext.compile_flag],0
 	mov dword[eax+GLContext.exec_flag],1

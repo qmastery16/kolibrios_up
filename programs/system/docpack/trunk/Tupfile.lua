@@ -12,6 +12,9 @@ else tup.append_table(deps,
   tup.rule("../../../../kernel/trunk/docs/sysfuncs.txt", cp_cmd, "SYSFUNCS.TXT"))
 end
 tup.append_table(deps,
-  tup.rule("../../../develop/fasm/trunk/fasm.txt", cp_cmd, "FASM.TXT")
+  tup.rule("../../../develop/fasm/1.73/fasm.txt", cp_cmd, "FASM.TXT")
+)
+tup.append_table(deps,
+  tup.rule("../../../../kernel/trunk/docs/stack.txt", cp_cmd, "STACK.TXT")
 )
 tup.rule({"docpack.asm", extra_inputs = deps}, env_prefix .. "fasm %f %o " .. tup.getconfig("KPACK_CMD"), "docpack")

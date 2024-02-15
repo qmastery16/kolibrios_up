@@ -1,43 +1,36 @@
-#include <menuet.h>
-#include <me_heap.h>
-#include <me_file.h>
+#include <kolibri.h>
+#include <kos_heap.h>
+#include <kos_file.h>
+#include <load_lib.h>
+#include <l_proc_lib.h>
 #include "lifegen.h"
 #include "life_bmp.h"
-#include "me_cdlg.h"
 
-using namespace Menuet;
+using namespace Kolibri;
 
-/***
-#define StrLen   LibbStrLen
-#define StrCopy  LibbStrCopy
-#define MemCopy  LibbMemCopy
-#define MemSet   LibbMemSet
-#define Floor    LibbFloor
+char library_path[2048];
 
-unsigned int (*StrLen)(const char *str) = 0;
-char *(*StrCopy)(char *dest, const char *src) = 0;
-void *(*MemCopy)(void *dest, const void *src, unsigned int n) = 0;
-void *(*MemSet)(void *s, char c, unsigned int n) = 0;
-double (*Floor)(double x) = 0;
+OpenDialog_data ofd;
+unsigned char procinfo[1024];
+char plugin_path[4096], filename_area[256];
+od_filter filter1 = { 8, "LIF\0\0" };
 
-#include <windows.h>
-void LibbInit()
-{
-	HINSTANCE hLib = LoadLibrary("Libb.dll");
-	if (!hLib)
-	{
-		DebugPutString("Can't load the library.\n");
-		Menuet::Abort();
-	}
-	StrLen = (unsigned int(*)(const char *str))GetProcAddress(hLib, "StrLen");
-	StrCopy = (char *(*)(char *dest, const char *src))GetProcAddress(hLib, "StrCopy");
-	MemCopy = (void *(*)(void *dest, const void *src, unsigned int n))GetProcAddress(hLib, "MemCopy");
-	MemSet = (void *(*)(void *s, char c, unsigned int n))GetProcAddress(hLib, "MemSet");
-	Floor = (double (*)(double x))GetProcAddress(hLib, "Floor");
+namespace Kolibri{
+	char CurrentDirectoryPath[2048];
 }
 
-#pragma startup LibbInit
-/**/
+void __stdcall DrawWindow()
+{
+	asm{
+		push ebx
+		mcall SF_REDRAW,SSF_BEGIN_DRAW
+	}
+	//KolibriOnPaint();
+	asm{
+		mcall SF_REDRAW,SSF_END_DRAW
+		pop ebx
+	}
+}
 
 void __stdcall OneGeneration(int w, int h, void *dest, const void *src, int flag);
 
@@ -108,11 +101,11 @@ AxisParam xpar = {0, 0, 0};
 AxisParam ypar = {0, 0, 0};
 MouseParam mpar = {0, 0, 0, 0, 0, MouseParam::HitNull};
 MenuParam menu;
-TOpenFileStruct open_file_str = MENUET_OPEN_FILE_INIT;
+bool open_file_str = false;
 TimeGeneration timegen[TimeGenLength];
 int timegenpos = 0;
 
-#ifdef __MENUET__
+#ifdef __KOLIBRI__
 
 inline int abs(int i) {return (i >= 0) ? i : (-i);}
 
@@ -1357,13 +1350,11 @@ void LifeScreenPutPicture(const unsigned char *pict, int size, TThreadData th)
 
 void MenuOpenDialogEnd(TThreadData th)
 {
-	int state = OpenFileGetState(open_file_str);
-	if (state <= 0) return;
-	OpenFileSetState(open_file_str, 0);
-	if (state != 2) return;
-	char *name = OpenFileGetName(open_file_str);
+	if(!ofd.openfile_path[0] || !open_file_str) return;
+	open_file_str = false;
+	char *name = ofd.openfile_path;
 	if (!name) return;
-	TFileData file = FileOpen(name);
+	FileInfoBlock* file = FileOpen(name);
 	if (!file) return;
 	int k = FileGetLength(file);
 	unsigned char *pict = 0;
@@ -1468,8 +1459,9 @@ void MenuMouseClick(int x, int y, int m, TThreadData th)
 			MenuClearClick(th);
 			break;
 		case MenuIOpen:
-			if (OpenFileGetState(open_file_str) < 0) break;
-			OpenFileDialog(open_file_str);
+			ofd.type = 0; // 0 - open
+			OpenDialog_Start(&ofd);
+			if(ofd.status==1) open_file_str = true;
 			break;
 		case MenuIAbout:
 			MenuAboutClick(th);
@@ -1700,33 +1692,48 @@ void Paint(int what, TThreadData th)
 	SetPicture(picture, (unsigned short)xpar.win, (unsigned short)ypar.win, th);
 }
 
-bool MenuetOnStart(TStartData &me_start, TThreadData th)
+bool KolibriOnStart(TStartData &me_start, TThreadData th)
 {
 	randomize();
 	me_start.WinData.Title = "Black and white Life";
 	me_start.Width = 500; me_start.Height = 400;
 	InitGenerate();
 	InitMenuButton();
-	if (CommandLine[0])
+	if(LoadLibrary("proc_lib.obj", library_path, "/sys/lib/proc_lib.obj", &import_proc_lib))
 	{
-		open_file_str.state = 2;
-		OpenFileSetName(open_file_str, CommandLine);
-	}
+		ofd.procinfo = procinfo;
+		ofd.com_area_name = "FFFFFFFF_open_dialog";
+		ofd.com_area = 0;
+		ofd.opendir_path = plugin_path;
+		ofd.dir_default_path = "/sys";
+		ofd.start_path = "/sys/File managers/opendial";
+		ofd.draw_window = DrawWindow;
+		ofd.status = 0;
+		ofd.openfile_path = CommandLine;
+		ofd.filename_area = filename_area;
+		ofd.filter_area = &filter1;
+		ofd.x_size = 420;
+		ofd.x_start = 10;
+		ofd.y_size = 320;
+		ofd.y_start = 10;
+		OpenDialog_Init(&ofd);
+	} else return false;
+	if (CommandLine[0]) open_file_str = true;
 	return true;
 }
 
-bool MenuetOnClose(TThreadData)
+bool KolibriOnClose(TThreadData)
 {
 	SetPictureSize(0, 0);
 	SetPoleSize(0, 0);
 	return true;
 }
 
-int MenuetOnIdle(TThreadData th)
+int KolibriOnIdle(TThreadData th)
 {
 	static const unsigned int WAIT_TIME = 2, GEN_TIME = 1;
 	int res = -1;
-	if (OpenFileGetState(open_file_str) > 0)
+	if (open_file_str)
 	{
 		MenuOpenDialogEnd(th);
 		res = 0;
@@ -1789,7 +1796,7 @@ int MenuetOnIdle(TThreadData th)
 	return res;
 }
 
-void MenuetOnSize(int window_rect[], Menuet::TThreadData th)
+void KolibriOnSize(int window_rect[], Kolibri::TThreadData th)
 {
 	unsigned short w, h;
 	GetClientSize(w, h, window_rect[2], window_rect[3], th);
@@ -1799,7 +1806,7 @@ void MenuetOnSize(int window_rect[], Menuet::TThreadData th)
 	Paint(PaintWNull | PaintWNow, th);
 }
 
-void MenuetOnKeyPress(TThreadData th)
+void KolibriOnKeyPress(TThreadData th)
 {
 	int ch;
 	while ((ch = GetKey()) >= 0)
@@ -1827,8 +1834,9 @@ void MenuetOnKeyPress(TThreadData th)
 				break;
 			case 'o':
 			case 'O':
-				if (OpenFileGetState(open_file_str) < 0) break;
-				OpenFileDialog(open_file_str);
+				ofd.type = 0; // 0 - open
+				OpenDialog_Start(&ofd);
+				if(ofd.status==1) open_file_str=true;
 				break;
 			case 'a':
 			case 'A':
@@ -1899,7 +1907,7 @@ void MenuetOnKeyPress(TThreadData th)
 	}
 }
 
-void MenuetOnMouse(TThreadData th)
+void KolibriOnMouse(TThreadData th)
 {
 	short xp = 0, yp = 0;
 	int w, h, x, y, xx, yy, m;
@@ -1951,34 +1959,3 @@ void MenuetOnMouse(TThreadData th)
 	}
 	mpar.button = m;
 }
-
-#ifndef __MENUET__
-
-#include <windows.h>
-
-void __stdcall (*DllOneGeneration)(int w, int h, void *dest, const void *src, int flag) = 0;
-
-void DllInit()
-{
-	HINSTANCE hLib = LoadLibrary("LifeGen.dll");
-	if (!hLib)
-	{
-		DebugPutString("Can't load the library.\n");
-		Menuet::Abort();
-	}
-	DllOneGeneration = (void(__stdcall*)(int, int, void*, const void*, int))GetProcAddress(hLib, "OneGeneration");
-	if (!DllOneGeneration)
-	{
-		DebugPutString("Can't get a library function.\n");
-		Menuet::Abort();
-	}
-}
-
-void __stdcall OneGeneration(int w, int h, void *dest, const void *src, int flag)
-{
-	if (!DllOneGeneration) DllInit();
-	DllOneGeneration(w, h, dest, src, flag);
-}
-
-#endif
-

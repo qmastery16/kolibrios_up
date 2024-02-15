@@ -46,7 +46,7 @@ NOTIFY_RUN:
  ;; CONFIG PBAR
     mov     eax, [ctrl.addr]
     add     eax, NTCTRL_PBAR_MAX
-    mov     dword [eax], 55
+    mov     dword [eax], MAX_FILES
 
     mov     eax, [ctrl.addr]
     add     eax, NTCTRL_PBAR_CUR
@@ -128,8 +128,7 @@ EXIT:
     add     eax, NTCTRL_APPLY_TEXT
     mov     byte [eax], 1
 	
-	mcall 5, 300
-	
+	m2m     [fileopen.path], TMP_netsurf
 	mcall   70, fileopen
 
    ;; CLOSE NOTIFY
@@ -142,7 +141,6 @@ EXIT:
 ;-------------------------------------------------------------------------------
  make_text:
     stdcall string.concatenate, sz_text, params
-    stdcall string.concatenate, sz_sec_line_start, params
     stdcall string.concatenate, current_filename, params
 
     ret

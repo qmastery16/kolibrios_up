@@ -27,23 +27,4 @@ macro DrawWideRectangle  x, y, w, h, boder, color
 	DrawBar x+w-boder, y+boder, boder, h-boder-boder
 }
 
-macro WriteText  x, y, fontType, color, text
-{
-	mcall 4, (x) shl 16 + (y), (fontType) shl 24 + (color), text
-}
 
-macro WriteTextBold  x, y, fontType, color, text
-{
-	mcall 4, (x) shl 16 + (y), (fontType) shl 24 + (color), text
-	add ebx,1 shl 16
-	mcall
-}
-
-BT_DEL     equ 0x80000000
-BT_HIDE    equ 0x40000000
-BT_NOFRAME equ 0x20000000
-
-macro DefineButton  x, y, w, h, id, background_color
-{
-	mcall 8, (x) shl 16 + (w), (y) shl 16 + (h), id, background_color
-}

@@ -1,11 +1,11 @@
 //visual text comparer 
 //by den po - jdp@bk.ru
 
-#define MEMSIZE 4096 * 60
-#include "../lib/io.h"
+#define MEMSIZE 1024 * 60
+#define ENTRY_POINT #main
+#include "../lib/fs.h"
 #include "../lib/strings.h"
 #include "../lib/obj/console.h"
-IO io1, io2;
 
 #define MAX_PATH 260
 
@@ -75,11 +75,12 @@ bool getparam()
 		dstfilename = #param + strlen(#param) + 3;
 		return true;
 	}
-	notify("'Wrong params specified. Use next format:\nAPPPATH \"PARAM1\" \"PARAM2\"' -E");
+	notify("'Wrong params! Use format:\nAPPPATH \"PARAM1\" \"PARAM2\"' -E");
 	return false;
 }
 
 main(){
+	mem_init();
 	if (param[0]) getparam();
 	if (!srcfilename) || (!dstfilename) gui(); else console();
 }
@@ -92,11 +93,8 @@ console() {
 	char s1;
 	int s2;
 
-	srcfile = io1.read(srcfilename);
-	dstfile = io2.read(dstfilename);
-
-	srcfilesize = io1.FILES_SIZE;
-	dstfilesize = io2.FILES_SIZE;
+	read_file(srcfilename, #srcfile, #srcfilesize);
+	read_file(dstfilename, #dstfile, #dstfilesize);
 
 	if (!srcfile) die("'First file not found' -E"); 
 	if (!dstfile) die("'Second file not found' -E");
@@ -199,6 +197,7 @@ console() {
 		notify("'Nothing to compare' -E"); 
 	else ifinit();
 
+	con_exit stdcall (0);
 	diffs.DeleteAll();        delete diffs;
 	dstfilenums.DeleteAll();  delete dstfilenums;
 	srcfilenums.DeleteAll();  delete srcfilenums;

@@ -1,6 +1,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                                 ;;
-;; Copyright (C) KolibriOS team 2004-2018. All rights reserved.    ;;
+;; Copyright (C) KolibriOS team 2004-2020. All rights reserved.    ;;
 ;; Distributed under terms of the GNU General Public License       ;;
 ;;                                                                 ;;
 ;;  HTTP library for KolibriOS                                     ;;
@@ -23,7 +23,7 @@
         TIMEOUT         = 500  ; in 1/100 s
 
         __DEBUG__       = 1
-        __DEBUG_LEVEL__ = 1
+        __DEBUG_LEVEL__ = 2
 
 
 format MS COFF
@@ -134,7 +134,7 @@ proc HTTP_buffersize_get ;//////////////////////////////////////////////////////
 ;< eax = buffer size in bytes                                                                     ;;
 ;;================================================================================================;;
 
-        mov     eax, [BUFFERSIZE]
+        mov     eax, [buffersize]
         ret
 
 endp
@@ -147,7 +147,7 @@ proc HTTP_buffersize_set ;//////////////////////////////////////////////////////
 ;> eax = buffer size in bytes                                                                     ;;
 ;;================================================================================================;;
 
-        mov     [BUFFERSIZE], eax
+        mov     [buffersize], eax
         ret
 
 endp
@@ -201,8 +201,8 @@ proc HTTP_free identifier ;/////////////////////////////////////////////////////
         mcall   close, [ebp + http_msg.socket]
 
   .not_connected:
+        invoke  mem.free, [ebp + http_msg.content_ptr]
         invoke  mem.free, ebp
-
         popa
         ret
 
@@ -664,9 +664,12 @@ proc HTTP_receive identifier ;//////////////////////////////////////////////////
         test    [ebp + http_msg.flags], FLAG_CONNECTED
         jz      .connection_closed
 
-; If the buffer is full, allocate a new one
+; Check if our receive buffer still has space
         cmp     [ebp + http_msg.buffer_length], 0
         jne     .receive
+
+        test    [ebp + http_msg.flags], FLAG_RING
+        jnz     .need_more_space
 
         test    [ebp + http_msg.flags], FLAG_STREAM
         jz      .err_header
@@ -704,7 +707,7 @@ proc HTTP_receive identifier ;//////////////////////////////////////////////////
 
         test    eax, eax
         jz      .server_closed
-        DEBUGF  1, "Received %u bytes\n", eax
+        DEBUGF  1, "Received %u bytes ", eax
 
 ; Update timestamp
         push    eax
@@ -716,6 +719,7 @@ proc HTTP_receive identifier ;//////////////////////////////////////////////////
         mov     edi, [ebp + http_msg.write_ptr]
         add     [ebp + http_msg.write_ptr], eax
         sub     [ebp + http_msg.buffer_length], eax
+        DEBUGF  1, "buffer length = %d\n", [ebp + http_msg.buffer_length]
 
 ; If data is chunked, combine chunks into contiguous data.
         test    [ebp + http_msg.flags], FLAG_CHUNKED
@@ -1017,6 +1021,17 @@ proc HTTP_receive identifier ;//////////////////////////////////////////////////
 ;
 
   .header_parsed:
+        ; If we're using ring buffer, check we crossed the boundary
+        test    [ebp + http_msg.flags], FLAG_RING
+        jz      @f
+        mov     ebx, [ebp + http_msg.content_ptr]
+        add     ebx, [buffersize]
+        cmp     [ebp + http_msg.write_ptr], ebx
+        jb      @f
+        DEBUGF  1, "Restarting at beginning of ring buffer\n"
+        mov     ebx, [buffersize]
+        sub     [ebp + http_msg.write_ptr], ebx
+  @@:
         ; Header was already parsed and connection isnt chunked.
         ; Update content_received
         add     [ebp + http_msg.content_received], eax
@@ -1069,6 +1084,17 @@ proc HTTP_receive identifier ;//////////////////////////////////////////////////
         ret
 
   .need_more_data_chunked:
+; If we're using ring buffer, check we crossed the boundary
+        test    [ebp + http_msg.flags], FLAG_RING
+        jz      @f
+        mov     ebx, [ebp + http_msg.content_ptr]
+        add     ebx, [buffersize]
+        cmp     [ebp + http_msg.write_ptr], ebx
+        jb      @f
+        DEBUGF  1, "Restarting at beginning of ring buffer\n"
+        mov     ebx, [buffersize]
+        sub     [ebp + http_msg.write_ptr], ebx
+  @@:
         ; We only got a partial chunk, or need more chunks, update content_received and request more data
         add     [ebp + http_msg.content_received], eax
         popa
@@ -1114,6 +1140,8 @@ proc HTTP_receive identifier ;//////////////////////////////////////////////////
 
   .server_closed:
         DEBUGF  1, "server closed connection, transfer complete?\n"
+        mcall   close, [ebp + http_msg.socket]
+        and     [ebp + http_msg.flags], not FLAG_CONNECTED
         test    [ebp + http_msg.flags], FLAG_GOT_HEADER
         jz      .err_server_closed
         test    [ebp + http_msg.flags], FLAG_CONTENT_LENGTH
@@ -1133,7 +1161,7 @@ proc HTTP_receive identifier ;//////////////////////////////////////////////////
   .err_no_ram:
         DEBUGF  2, "ERROR: out of RAM\n"
         or      [ebp + http_msg.flags], FLAG_NO_RAM
-        jmp     .abort
+        jmp     .abort  ; TODO: dont abort connection (requires rechecking all codepaths..)
 
   .err_timeout:
         DEBUGF  2, "ERROR: timeout\n"
@@ -1147,6 +1175,14 @@ proc HTTP_receive identifier ;//////////////////////////////////////////////////
         and     [ebp + http_msg.flags], not FLAG_CONNECTED
         mcall   close, [ebp + http_msg.socket]
   .connection_closed:
+  .continue:
+        popa
+        xor     eax, eax
+        ret
+
+  .need_more_space:
+        DEBUGF  1, "Buffer is full!\n"
+        and     [ebp + http_msg.flags], not FLAG_NEED_MORE_SPACE
         popa
         xor     eax, eax
         ret
@@ -1155,6 +1191,16 @@ endp
 
 
 alloc_contentbuff:
+
+        test    [ebp + http_msg.flags], FLAG_RING
+        jz      @f
+
+        DEBUGF  1, "Allocating ring buffer\n"
+        mcall   68, 29, [buffersize]
+        or      eax, eax
+        jz      .no_ram
+        jmp     .allocated
+  @@:
 
         test    [ebp + http_msg.flags], FLAG_STREAM
         jz      @f
@@ -1166,6 +1212,7 @@ alloc_contentbuff:
         or      eax, eax
         jz      .no_ram
 
+  .allocated:
         DEBUGF  1, "Content buffer allocated: 0x%x\n", eax
 
 ; Copy already received content into content buffer
@@ -1190,8 +1237,11 @@ alloc_contentbuff:
         add     eax, [ebp + http_msg.header_length]
         invoke  mem.realloc, ebp, eax
         or      eax, eax
-  .no_ram:
+        ret
 
+  .no_ram:
+        DEBUGF  2, "Error allocating content buffer!\n"
+        mov     [ebp + http_msg.buffer_length], 0       ;;;
         ret
 
 

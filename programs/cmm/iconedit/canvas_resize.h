@@ -41,7 +41,7 @@ void CanvasReSize_Thread()
 		if (SCAN_CODE_ENTER == key_scancode) EventApplyClick();
 		if (SCAN_CODE_TAB == key_scancode) EventTabClick();
 
-		EAX= key_ascii << 8;
+		EAX = key_editbox;
 		edit_box_key stdcall (#edit_columns);	
 		edit_box_key stdcall (#edit_rows);	
 		break;
@@ -53,10 +53,10 @@ void CanvasReSize_Thread()
 		break;
 
 	case evReDraw:
-		DefineAndDrawWindow(Form.left+canvas.x + 100, Form.top+skin_height+canvas.y+40, 
-			200, 170, 0x34, system.color.work, "Canvas", 0);
-		WriteText(20, 20, 0x90, system.color.work_text, "Width");
-		WriteText(20, 60, 0x90, system.color.work_text, "Height");
+		DefineAndDrawWindow(Form.left+canvas.x + 100, Form.top+skin_h+canvas.y+40, 
+			200, 170, 0x34, sc.work, "Canvas", 0);
+		WriteText(20, 20, 0x90, sc.work_text, "Width");
+		WriteText(20, 60, 0x90, sc.work_text, "Height");
 		DrawStandartCaptButton(20, 100, BTN_APPLY, "OK");
 		DrawEditBoxes();
 	}

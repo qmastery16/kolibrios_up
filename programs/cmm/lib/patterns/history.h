@@ -3,11 +3,12 @@
 struct _history {
 	collection items;
 	int active;	
+	void clear();
 	int add();
 	int back();
 	int forward();
 	dword current();
-} history;
+};
 
 int _history::add(dword in)
 {
@@ -35,4 +36,10 @@ int _history::forward()
 dword _history::current()
 {
 	return items.get(active-1);
+}
+
+:void _history::clear()
+{
+	items.drop();
+	active=0;
 }

@@ -6,11 +6,6 @@
 #include "../lib/kolibri.h"
 #endif
 
-
-#ifndef INCLUDE_FILESYSTEM_H
-#include "../lib/fs.h"
-#endif
-
 //===================================================//
 //                                                   //
 //       Kolibri Clipboard System Functions          //
@@ -65,7 +60,7 @@ inline fastcall dword Clipboard__ResetBlockingBuffer()
 
 :void Clipboard__CopyText(dword _text)
 {
-int size_buf;
+dword size_buf;
 dword buff_data;
 
 	size_buf = strlen(_text) + 12;
@@ -76,7 +71,7 @@ dword buff_data;
 	strcpy(buff_data+12, _text);
 
 	Clipboard__SetSlotData(size_buf, buff_data);
-	if (EAX!=0) notify("'Error while copying to clipboard!'E");
+	//if (EAX!=0) notify("'Error while copying to clipboard!'E");
 
 	buff_data = free(buff_data);
 }

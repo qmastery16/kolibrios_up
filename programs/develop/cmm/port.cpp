@@ -99,7 +99,7 @@ int MultiByteToWideChar(
     int cchWideChar 	// size of buffer 
    )
 {
-	int i;
+	int i = 0;
 	while ((lpMultiByteStr[i*2]!=0) && (lpMultiByteStr[i*2+1]!=0)) i++;
 	return i/2;
 }

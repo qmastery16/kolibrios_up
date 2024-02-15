@@ -1,6 +1,7 @@
 
-CC = gcc
-AS = as
+CC = kos32-gcc
+AS = kos32-as
+LD = kos32-ld 
 
 DRV_TOPDIR   = $(CURDIR)/..
 DRV_INCLUDES = $(DRV_TOPDIR)/include
@@ -53,6 +54,7 @@ NAME_SRCS:=  				\
 		linux/string.c		\
 		linux/time.c		\
 		linux/workqueue.c	\
+		linux/msr.c		\
 		malloc/malloc.c		\
 		stdio/vsprintf.c	\
 		string/strstr.c		\

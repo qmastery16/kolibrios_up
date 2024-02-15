@@ -8,78 +8,38 @@ draw_buttons_panel:
 	sub	ebx,9
 	add	ebx,5 shl 16
 	mcall	13,,,0xffffff
+	
 	mov	edx,15 shl 16+20
 	add	edx,[skin_high]
-	pusha
-	call	.calculate_button
-	mcall	,,,150
-	popa
-	mcall	7,[buttons_img_start],<16,16>
-	add	edx,26 shl 16
-	add	ebx,16*16*3
-	pusha
-	call	.calculate_button
-	mcall	,,,151
-	popa
+	mcall	7,buttons_file_data,<198,16>
+	
+	mov ecx, 20
+	add ecx, [skin_high]
+	shl ecx, 16
+	add ecx, 16
+	mcall	8,<15,16>,,150+0x40000000
+	
+_new_but:
+	add	ebx,26 shl 16
+	inc edx
 	mcall
-	add	edx,26 shl 16
-	add	ebx,16*16*3
-	pusha
-	call	.calculate_button
-	mcall	,,,152
-	popa
-	mcall
-	add	edx,26 shl 16
-	add	ebx,16*16*3
-	pusha
-	call	.calculate_button
-	mcall	,,,153
-	popa
-	mcall
-	add	edx,26 shl 16
-	add	ebx,16*16*3
-	pusha
-	call	.calculate_button
-	mcall	,,,154
-	popa
-	mcall
-	add	edx,26 shl 16
-	add	ebx,16*16*3
-	pusha
-	call	.calculate_button
-	mcall	,,,155
-	popa
-	mcall
-	add	edx,26 shl 16
-	add	ebx,16*16*3
-	pusha
-	call	.calculate_button
-	mcall	,,,156
-	popa
-	mcall
-	add	edx,26 shl 16
-	add	ebx,16*16*3
-	pusha
-	call	.calculate_button
-	mcall	,,,157
-	popa
-	mcall
+	cmp edx, 157+0x40000000
+	jl  _new_but
+	
 	ret
 ;--------------------------------------
 .calculate_button:
-	mov	esi,0xffffff
 	mov	ebx,edx
 	mov	bx,15
 	mov	ecx,edx
 	shl	ecx,16
 	mov	cx,bx
-	mov	eax,8
 	ret
 ;------------------------------------------------------------------------------
 draw_left_sort_button:
 	mov	bx,[left_panel_x.start_x]
 	add	bx,[left_panel_x.size_x]
-	sub	ebx,50+15
+	sub	ebx,50+15+12
 	mov	cx,[left_panel_y.start_y]
 	call	calclulate_sort_button_1
 	mov	edx,145
@@ -120,7 +80,7 @@ calclulate_sort_button_2:
 	cmp	ebp,4
 	jne	@f
 
-	mov	bx,15
+	mov	bx,15+12
 	jmp	.continue
 ;--------------------------------------
 @@:
@@ -169,7 +129,7 @@ calclulate_sort_button_2:
 draw_right_sort_button:
 	mov	bx,[right_panel_x.start_x]
 	add	bx,[right_panel_x.size_x]
-	sub	ebx,50+15
+	sub	ebx,50+15+12
 	mov	cx,[right_panel_y.start_y]
 	call	calclulate_sort_button_1
 	mov	edx,149
@@ -264,13 +224,16 @@ draw_icon:
 
 	call	get_icon_number
 	imul	ebx,270
-	add	ebx,mem
+	add	ebx,icons_file_data
 	jmp	.draw
 ;--------------------------------------
 .draw_dir_pic:
-	mov	ebx,mem
+	mov	ebx,icons_file_data
 	cmp	[edx],word '..'
 	jne	 .draw
+
+	cmp	[edx+2],byte 0
+	jne	.draw
 
 	add	ebx,270   ;*17
 ;--------------------------------------
@@ -279,6 +242,7 @@ draw_icon:
 	ror	edx,16
 	sub	edx,12
 	rol	edx,16
+	dec edx
 	mcall	7, ,<10,9>
 	popa
 	ret
@@ -322,37 +286,20 @@ decimal_string_2:
 	pop	edx ecx ebx eax
 	ret
 ;------------------------------------------------------------------------------
-decimal_string_4:
-	push	eax ecx edx
-	xor	ecx,ecx
-	mov	[ebx],byte '0'
-	inc	ebx
+decimal_string:
+	push	eax ebx ecx edx
+	mov	ecx,10
 ;--------------------------------------
 .p3:
 	xor	edx,edx
-	push	ebx
-	mov	ebx,10
-	div	ebx
-	pop	ebx
+	div	ecx
 	add	edx,48
-	push	edx
-	inc	ecx
-	cmp	eax,0
-	jne	.p3
-
-	cmp	ecx,3
-	jbe	.p4
-
-	mov	ecx,4
-	dec	ebx
-;--------------------------------------
-.p4:
-	pop	edx
 	mov	[ebx],dl
-	inc	ebx
-	loop	.p4
+	dec	ebx
+	test	eax,eax
+	jnz	.p3
 
-	pop	edx ecx eax
+	pop	edx ecx ebx eax
 	ret
 ;------------------------------------------------------------------------------
 draw_type_size_date:
@@ -438,84 +385,117 @@ draw_type_size_date:
 	mov	[size_table+4],word '- '
 	jmp	.date
 ;--------------------------------------
+.qword_div:
+	mov	eax,[edx-40+32]
+	mov	ebx,[edx-40+32+4]
+@@:	; /1024
+	shrd	eax,ebx,5 ; /32
+	shr	ebx,5 ; /32
+	shrd	eax,ebx,5 ; /32
+	shr	ebx,5 ; /32
+	dec	ecx
+	jnz	@b
+; /(1024*1024)
+	shr	eax,20
+	test	eax,eax
+	ret
+;--------------------------------------
 .copy_size:
-;/0x40000000 - Gb
-;/0x100000 - Mb
-;/0x400 Kb
+;/0x1000000000000000 - EB
+;/0x4000000000000 - PB
+;/0x10000000000 - TB
+;/0x40000000 - GB
+;/0x100000 - MB
+;/0x400 - KB
 	mov	[size_table],dword '    '
 	mov	[size_table+4],word '  '
-	push	ebx
-	push	edx
-	mov	eax,[edx-40+32]
-	mov	ebx,0x40000000
-	xor	edx,edx
-	div	ebx
-	cmp	eax,0
-	je	@f
+	push	ebx edx
+	push	ecx
+	mov	ecx,4
+	call	.qword_div
+	pop	ecx
+	jz	@f
 
-	mov	ebx,size_table
-	call	decimal_string_4
-	mov	[ebx],byte 'G'
+	mov	ebx,size_table+3
+	call	decimal_string
+	mov	[ebx+1],byte 'E' ; Exa Byte
 	jmp	.size_convert_end
 ;--------------------------------------
 @@:
-	mov	edx,[esp]
-	mov	eax,[edx-40+32]
-	mov	ebx,0x100000
-	xor	edx,edx
-	div	ebx
-	cmp	eax,0
-	je	@f
+	push	ecx
+	mov	ecx,3
+	call	.qword_div
+	pop	ecx
+	jz	@f
 
-	mov	ebx,size_table
-	call	decimal_string_4
-	mov	[ebx],byte 'M'
+	mov	ebx,size_table+3
+	call	decimal_string
+	mov	[ebx+1],byte 'P' ; Peta Byte
 	jmp	.size_convert_end
 ;--------------------------------------
 @@:
-	mov	edx,[esp]
-	mov	eax,[edx-40+32]
-	mov	ebx,0x400
-	xor	edx,edx
-	div	ebx
-	cmp	eax,0
-	je	@f
+	push	ecx
+	mov	ecx,2
+	call	.qword_div
+	pop	ecx
+	jz	@f
 
-	mov	ebx,size_table
-	call	decimal_string_4
-	mov	[ebx],byte 'K'
+	mov	ebx,size_table+3
+	call	decimal_string
+	mov	[ebx+1],byte 'T' ; Tera Byte
 	jmp	.size_convert_end
 ;--------------------------------------
 @@:
-	mov	edx,[esp]
+	push	ecx
+	mov	ecx,1
+	call	.qword_div
+	pop	ecx
+	jz	@f
+
+	mov	ebx,size_table+3
+	call	decimal_string
+	mov	[ebx+1],byte 'G' ; Giga Byte
+	jmp	.size_convert_end
+;--------------------------------------
+@@:
 	mov	eax,[edx-40+32]
+	mov	ebx,eax
+	shr	eax,20 ; /(1024*1024)
+	test	eax,eax
+	jz	@f
+
+	mov	ebx,size_table+3
+	call	decimal_string
+	mov	[ebx+1],byte 'M' ; Mega Byte
+	jmp	.size_convert_end
+;--------------------------------------
+@@:
+	mov	eax,ebx
+	shr	eax,10 ; /1024
+	test	eax,eax
+	jz	@f
+
+	mov	ebx,size_table+3
+	call	decimal_string
+	mov	[ebx+1],byte 'K' ; Kilo Byte
+	jmp	.size_convert_end
+;--------------------------------------
+@@:
+	mov	eax,ebx
 ;.size_convert:
-	mov	ebx,size_table
-	call	decimal_string_4
+	mov	ebx,size_table+4
+	call	decimal_string
 ;--------------------------------------
 .size_convert_end:
-	cmp	[size_table],byte '0'
-	jne	@f
-
-	mov	[size_table],byte ' '
-;--------------------------------------
-@@:
-	cmp	[size_table+4],byte ' '
-	jne	@f
-
-	mov	esi,size_table+3
-	mov	edi,esi
-	inc	edi
-	mov	ecx,5
-	std
-	rep	movsb
-	jmp	@r
-;--------------------------------------
-@@:
-	pop	edx
-	pop	ebx
+	pop	edx ebx
 ;--------------------------------------
 .date:
+	cmp	[edx],word '..'
+	jne	@f
+	
+	cmp	[edx+2],byte 0
+	je	.not_show_date
+@@:
 	xor	eax,eax
 	mov	al,[edx-40+28]
 	push	ebx
@@ -525,14 +505,16 @@ draw_type_size_date:
 	mov	ebx,date_table+3
 	call	decimal_string_2
 	mov	ax,[edx-40+30]
-	mov	ebx,year_table
-	call	decimal_string_4
-	mov	ax,[year_table+2]
-	mov	[date_table+6],ax
+	lea	ebx,[year_table+4]
+	mov	[ebx-4], dword '0000'
+	mov	[ebx], byte '0'
+	call	decimal_string
+	mov	eax,[year_table+1]
+	mov	[date_table+6],eax
 	pop	ebx
 	ror	ebx,16
 	add	bx,[left_panel_x.size_x]
-	sub	ebx,122+12+15
+	sub	ebx,161	;122+12+15
 	rol	ebx,16
 	mov	ecx,0
 	cmp	[marked_file],byte 0
@@ -541,7 +523,9 @@ draw_type_size_date:
 	mov	ecx,0xff0000
 ;--------------------------------------
 @@:
-	mcall	4,,,type_table,20
+	mcall	4,,,type_table,22
+;--------------------------------------
+.not_show_date:
 	popa
 	ret
 ;------------------------------------------------------------------------------
@@ -654,7 +638,7 @@ draw_folder_data:
 	xor	edx,edx
 	div	ebx
 	pop	edx ebx
-	sub	eax,23+2+2
+	sub	eax,23+2+2+2
 	mov	esi,[file_name_length]
 	mov	[temp_counter_1],0
 	cmp	esi,eax

@@ -7,12 +7,12 @@ include '../../../macros.inc'
 include '../../../proc32.inc'
 include '../../../KOSfuncs.inc'
 include '../../../load_img.inc'
-include '../../../develop/libraries/box_lib/load_lib.mac'
+include '../../../load_lib.mac'
 
 ;include 'lang.inc'
 
-@use_library_mem mem.Alloc,mem.Free,mem.ReAlloc,dll.Load
-hed db 'Life 04.11.18',0 ;подпись окна
+@use_library mem.Alloc,mem.Free,mem.ReAlloc,dll.Load
+hed db 'Life 18.11.20',0 ;подпись окна
 
 run_file_70 FileInfoBlock
 image_data dd 0 ;указатель на временную память. для нужен преобразования изображения
@@ -75,20 +75,17 @@ align 4
 proc pole_init_colors uses eax ebx ecx edx esi edi, col_pole:dword, col_cell_n:dword, col_cell_o:dword
 	mov esi,[CellColors]
 	mov ebx,[col_pole]
-	mov dword[esi],ebx
+	mov [esi],ebx
 
+	lea edi,[esi+4*COL_MEM]
 	add esi,4
-	mov edi,COL_MEM
-	dec edi
-	shl edi,2
-	add edi,esi
 	; esi - указатель на 1-й градиентный цвет
 	; edi - указатель на последний градиентный цвет
 	mov eax,[col_cell_n]
 	mov ebx,[col_cell_o]
 
-	mov dword[esi],eax
-	mov dword[edi],ebx
+	mov [esi],eax
+	mov [edi],ebx
 	;need save ecx edx
 	stdcall middle_colors, esi,edi
 
@@ -606,8 +603,8 @@ pole_next_gen:
 				add edi,[memCell] ;edi -> &memCell[fristC]
 				mov esi,[edi] ;swp=memCell[fristC];
 				mov edx,[ecx] ;edx - уже не используем, потому можем портить
-				mov dword[edi],edx ;memCell[fristC]=memCell[i];
-				mov dword[ecx],esi ;memCell[i]=swp;
+				mov [edi],edx ;memCell[fristC]=memCell[i];
+				mov [ecx],esi ;memCell[i]=swp;
 				dec eax
 				dec ebx
 				sub ecx,4
@@ -617,10 +614,10 @@ pole_next_gen:
 		cmp ebx,eax
 		jle @b
 	mov ebx,[memCell]
-	mov dword[ebx],eax ;firstC <- eax
+	mov [ebx],eax ;firstC <- eax
 
-	mov dword[b_sort],eax
-	stdcall pole_fl_sort, dword[memCell],eax
+	mov [b_sort],eax
+	stdcall pole_fl_sort, [memCell],eax
 
 	mov ecx,[memCell]
 	mov ebx,1
@@ -631,7 +628,7 @@ pole_next_gen:
 		jae .no_change
 			xor byte[edx+Cell.liv],3
 			mov edi,[tim]
-			mov dword[edx+Cell.tc],edi
+			mov [edx+Cell.tc],edi
 			bt word[edx+Cell.liv],0
 			jc .new_cell
 				push eax
@@ -725,8 +722,8 @@ proc pole_fl_sort, a:dword, n:dword
 		add edi,ecx ;edi -> &a[i]
 		mov esi,[edi] ;w=a[i];
 		mov edx,[ecx+4]
-		mov dword[edi],edx ;a[i]=a[1];
-		mov dword[ecx+4],esi ;a[1]=w;
+		mov [edi],edx ;a[i]=a[1];
+		mov [ecx+4],esi ;a[1]=w;
 
 		dec eax
 		cmp eax,2
@@ -752,7 +749,7 @@ endl
 	lea edx,[ebx*4]
 	add edx,eax
 	mov edx,[edx]
-	mov dword[copy],edx ;copy=a[i];
+	mov [copy],edx ;copy=a[i];
 	mov edi,ebx
 	shl edi,1 ;m=i<<1;
 	.cycle_b: ;while (m<=k) {
@@ -777,7 +774,7 @@ endl
 		;if (pole_compare_cells_bm(a[j],copy)) {
 		lea edx,[esi*4]
 		add edx,eax
-		stdcall pole_compare_cells_bm, dword[edx],dword[copy]
+		stdcall pole_compare_cells_bm, dword[edx],[copy]
 		cmp dl,0
 		je .cycle_e ;} else break; //выход из цикла
 
@@ -798,7 +795,7 @@ endl
 	shl ebx,2
 	add eax,ebx
 	mov edx,[copy]
-	mov dword[eax],edx ;a[i]=copy;
+	mov [eax],edx ;a[i]=copy;
 
 	popad
 	ret
@@ -1483,7 +1480,7 @@ but_pole_up:
 		xor edx,edx
 		div ecx
 	@@:
-	add dword[Cor_y],eax
+	add [Cor_y],eax
 	pop edx ecx eax
 	stdcall [buf2d_clear], buf_0, [buf_0.color]
 	call pole_paint
@@ -1502,7 +1499,7 @@ but_pole_dn:
 		xor edx,edx
 		div ecx
 	@@:
-	sub dword[Cor_y],eax
+	sub [Cor_y],eax
 	pop edx ecx eax
 	stdcall [buf2d_clear], buf_0, [buf_0.color]
 	call pole_paint
@@ -1514,14 +1511,13 @@ but_pole_left:
 	push eax ecx edx
 	mov eax,[buf_0.w]
 	shr eax,2
-	xor ecx,ecx
-	mov cl,byte[zoom]
-	cmp cx,2
+	movzx ecx,byte[zoom]
+	cmp ecx,2
 	jl @f ;деление на величину zoom
 		xor edx,edx
 		div ecx
 	@@:
-	add dword[Cor_x],eax
+	add [Cor_x],eax
 	pop edx ecx eax
 	stdcall [buf2d_clear], buf_0, [buf_0.color]
 	call pole_paint
@@ -1540,25 +1536,20 @@ but_pole_right:
 		xor edx,edx
 		div ecx
 	@@:
-	sub dword[Cor_x],eax
+	sub [Cor_x],eax
 	pop edx ecx eax
 	stdcall [buf2d_clear], buf_0, [buf_0.color]
 	call pole_paint
 	stdcall [buf2d_draw], buf_0
 	ret
 
-;align 4
-;but_bru_clear:
-;        ret
-
 ;input:
 ; buf - указатель на строку, число должно быть в 10 или 16 ричном виде
 ;output:
 ; eax - число
 align 4
-proc conv_str_to_int, buf:dword
+proc conv_str_to_int uses ebx ecx esi, buf:dword
 	xor eax,eax
-	push ebx ecx esi
 	xor ebx,ebx
 	mov esi,[buf]
 	;определение отрицательных чисел
@@ -1620,7 +1611,6 @@ proc conv_str_to_int, buf:dword
 		sub ecx,eax
 		mov eax,ecx
 	@@:
-	pop esi ecx ebx
 	ret
 endp
 
@@ -1646,14 +1636,14 @@ OpenDialog_data:
 .y_size 		dw 320 ;+52 ; Window y size
 .y_start		dw 10 ;+54 ; Window Y position
 
-default_dir db '/rd/1',0
+default_dir db '/sys',0
 
 communication_area_name:
 	db 'FFFFFFFF_open_dialog',0
 open_dialog_name:
 	db 'opendial',0
 communication_area_default_path:
-	db '/rd/1/File managers/',0
+	db '/sys/File managers/',0
 
 Filter:
 dd Filter.end - Filter ;.1
@@ -1664,83 +1654,33 @@ db 'RLE',0
 db 0
 
 
-
-head_f_i:
-head_f_l db 'Системная ошибка',0
-
 system_dir_0 db '/sys/lib/'
 lib_name_0 db 'proc_lib.obj',0
-err_message_found_lib_0 db 'Не найдена библиотека ',39,'proc_lib.obj',39,0
-err_message_import_0 db 'Ошибка при импорте библиотеки ',39,'proc_lib.obj',39,0
-
 system_dir_1 db '/sys/lib/'
 lib_name_1 db 'libimg.obj',0
-err_message_found_lib_1 db 'Не найдена библиотека ',39,'libimg.obj',39,0
-err_message_import_1 db 'Ошибка при импорте библиотеки ',39,'libimg.obj',39,0
-
 system_dir_2 db '/sys/lib/'
 lib_name_2 db 'buf2d.obj',0
-err_msg_found_lib_2 db 'Не найдена библиотека ',39,'buf2d.obj',39,0
-err_msg_import_2 db 'Ошибка при импорте библиотеки ',39,'buf2d',39,0
 
 l_libs_start:
-	lib0 l_libs lib_name_0, sys_path, file_name, system_dir_0,\
-		err_message_found_lib_0, head_f_l, proclib_import,err_message_import_0, head_f_i
-	lib1 l_libs lib_name_1, sys_path, file_name, system_dir_1,\
-		err_message_found_lib_1, head_f_l, import_libimg, err_message_import_1, head_f_i
-	lib2 l_libs lib_name_2, sys_path, library_path, system_dir_2,\
-		err_msg_found_lib_2,head_f_l,import_buf2d,err_msg_import_2,head_f_i
+	lib0 l_libs lib_name_0, file_name, system_dir_0, import_proclib
+	lib1 l_libs lib_name_1, file_name, system_dir_1, import_libimg
+	lib2 l_libs lib_name_2, file_name, system_dir_2, import_buf2d
 l_libs_end:
 
 align 4
 import_libimg:
 	dd alib_init1
-	img_is_img  dd aimg_is_img
-	img_info    dd aimg_info
-	img_from_file dd aimg_from_file
-	img_to_file dd aimg_to_file
-	img_from_rgb dd aimg_from_rgb
-	img_to_rgb  dd aimg_to_rgb
 	img_to_rgb2 dd aimg_to_rgb2
 	img_decode  dd aimg_decode
-	img_encode  dd aimg_encode
-	img_create  dd aimg_create
 	img_destroy dd aimg_destroy
-	img_destroy_layer dd aimg_destroy_layer
-	img_count   dd aimg_count
-	img_lock_bits dd aimg_lock_bits
-	img_unlock_bits dd aimg_unlock_bits
-	img_flip    dd aimg_flip
-	img_flip_layer dd aimg_flip_layer
-	img_rotate  dd aimg_rotate
-	img_rotate_layer dd aimg_rotate_layer
-	img_draw    dd aimg_draw
-
 	dd 0,0
 	alib_init1   db 'lib_init',0
-	aimg_is_img  db 'img_is_img',0 ;определяет по данным, может ли библиотека сделать из них изображение
-	aimg_info    db 'img_info',0
-	aimg_from_file db 'img_from_file',0
-	aimg_to_file db 'img_to_file',0
-	aimg_from_rgb db 'img_from_rgb',0
-	aimg_to_rgb  db 'img_to_rgb',0 ;преобразование изображения в данные RGB
 	aimg_to_rgb2 db 'img_to_rgb2',0
 	aimg_decode  db 'img_decode',0 ;автоматически определяет формат графических данных
-	aimg_encode  db 'img_encode',0
-	aimg_create  db 'img_create',0
 	aimg_destroy db 'img_destroy',0
-	aimg_destroy_layer db 'img_destroy_layer',0
-	aimg_count   db 'img_count',0
-	aimg_lock_bits db 'img_lock_bits',0
-	aimg_unlock_bits db 'img_unlock_bits',0
-	aimg_flip    db 'img_flip',0
-	aimg_flip_layer db 'img_flip_layer',0
-	aimg_rotate  db 'img_rotate',0
-	aimg_rotate_layer db 'img_rotate_layer',0
-	aimg_draw    db 'img_draw',0
 
 align 4
-proclib_import: ;описание экспортируемых функций
+import_proclib:
 	OpenDialog_Init dd aOpenDialog_Init
 	OpenDialog_Start dd aOpenDialog_Start
 dd 0,0
@@ -1767,13 +1707,6 @@ import_buf2d:
 	sz_buf2d_filled_rect_by_size db 'buf2d_filled_rect_by_size',0
 	sz_buf2d_set_pixel db 'buf2d_set_pixel',0
 
-mouse_dd dd 0
-sc system_colors 
-last_time dd 0
-
-align 16
-procinfo process_information 
-
 align 4
 buf_0: dd 0
 .l: dw 0 ;+4 left
@@ -1783,14 +1716,17 @@ buf_0: dd 0
 .color: dd 0xffffd0 ;+16 color
 	db 24 ;+20 bit in pixel
 
+align 16
 i_end:
-	rb 1024
-stacktop:
+	mouse_dd rd 1
+	last_time rd 1
+	sc system_colors
+	procinfo process_information
 	sys_path rb 1024
-	file_name:
-		rb 1024 ;4096 
-	library_path rb 1024
+	file_name rb 2048 ;4096
 	plugin_path rb 4096
 	openfile_path rb 4096
 	filename_area rb 256
+	rb 1024
+stacktop:
 mem:

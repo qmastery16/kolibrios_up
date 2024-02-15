@@ -5,7 +5,7 @@
 ;;                                                              ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-$Revision: 6875 $
+$Revision: 9894 $
 
 ERROR_SUCCESS        = 0
 ERROR_DISK_BASE      = 1
@@ -19,14 +19,212 @@ ERROR_DISK_FULL      = 8
 ERROR_FS_FAIL        = 9
 ERROR_ACCESS_DENIED  = 10
 ERROR_DEVICE         = 11
-ERROR_OUT_OF_MEMORY  = 12
 
 maxPathLength = 1000h
 
 image_of_eax EQU esp+32
 image_of_ebx EQU esp+20
 
-; System function 70
+; fs api for drivers
+struct  FileSystem
+        Next            dd ?
+        Prev            dd ?
+        Creat_part      dd ?  ; %FSNAME%_create_partition
+        UserFuncs       dd ? ; for fs_del
+        Name            rd 16 ;ascii string + \n
+ends
+
+
+fs_list:
+        dd      fs_list
+        dd      fs_list
+;.look:  dd      0
+
+; IN: ecx = %FSNAME%_create_partition
+;     edx = ptr to UserFuncs
+;     [esp] = fs name
+;OUT: eax = list item
+fs_add:
+        push    ecx edx
+        ; add in fs_list
+        mov     eax, sizeof.FileSystem
+        call    malloc
+        pop     edx ecx
+        test    eax, eax
+        jz      .err
+
+        mov     [eax + FileSystem.Creat_part], ecx
+        mov     [eax + FileSystem.UserFuncs], edx
+        mov     edx, [esp + 4]
+        mov     [eax + FileSystem.Name], edx
+        mov     edx, eax
+
+        cli          ; DELETE
+        list_add_tail edx, fs_list
+        sti          ; DELETE
+        mov     edx, ecx ; save function
+
+        ;DEBUGF  1, 'K : FS: find partition\n'
+        ; check all disks
+        mov     esi, [disk_list]
+.new_disk:
+        cmp     dword[esi], disk_list
+        jz      .end
+
+        push    edx
+        mov     eax, [esi + DISK.MediaInfo.SectorSize]
+        shl     eax, 2
+        stdcall kernel_alloc, eax   ;get buffer
+        test    eax, eax
+        pop     edx
+        jz      .end ; no memory
+        mov     ebx, eax
+
+        mov     ecx, [esi + DISK.NumPartitions]
+        dec     ecx
+        shl     ecx, 2 ; to dword
+        add     ecx, [esi + DISK.Partitions]
+@@:
+        mov     ebp, [ecx]
+        cmp     [ebp + PARTITION.FSUserFunctions], default_fs_functions
+        jnz     .no_fs
+
+        ;DEBUGF  1, 'K : FS: found partition\n'
+        push    ecx edx
+
+        xor     eax, eax     ; first sector of the partition
+        call    fs_read32_sys
+        push    eax
+        ;DEBUGF  1, 'K : FS: call driver func = %x\n', edx
+
+        call    edx ; creat_partition
+        add     esp, 4
+        ;DEBUGF  1, 'K : FS: end call\n'
+        pop     edx ecx
+
+        test    eax, eax
+        jz      .no_fs
+        ; save and delete old struct
+        xchg    [ecx], eax
+        push    ecx edx
+        call    free
+        pop     edx ecx
+        ;DEBUGF  1, 'K : FS: set fs for partition\n'
+.no_fs:
+        ;sub     ecx, 4
+        cmp     ecx, [esi + DISK.Partitions]
+        lea     ecx, [ecx - 4]
+        jnz     @b
+
+        push    edx
+        stdcall kernel_free, ebx
+        pop     edx
+
+        mov     esi, [esi]
+        jmp     .new_disk
+.end:
+.err:
+        ret
+; IN: ecx = list item
+;OUT: -
+;fs_del:
+;
+;        ret
+
+
+
+; System function 70 security check
+align 4
+proc file_system_is_operation_safe stdcall, inf_struct_ptr: dword
+; in:
+;      inf_struct_ptr = pointer to information structure was given to sysfn70
+; out: ZF = 1 if operation is safe
+;      ZF = 0 if operation can cause kernel crash
+        push    ebx ecx edx
+        xor     ecx, ecx ; ecx - length of target buffer
+
+        mov     ebx, [inf_struct_ptr]
+        mov     edx, [ebx + 16] ; base of target buffer
+
+        cmp     dword [ebx], 0 ; if 70.0
+        jnz     .case1
+        mov     ecx, dword [ebx + 12]
+        jmp     .end_switch
+
+.case1:
+        cmp     dword [ebx], 1 ; if 70.1
+        jnz     .case2_3
+        ;mov     ecx, 32
+        cmp     dword [ebx + 8], 1 ; check encoding
+        jbe     .case1_304 ; if encdoing <= 1 i.e cpp866 
+        mov     ecx, 560 ; if unicode then bdvk block len is 560 bytes
+        jmp     .case1_end
+.case1_304:
+        mov     ecx, 304 ; if cp866 then bdvk block len is 304 bytes
+.case1_end:
+        imul    ecx, dword [ebx + 12] ; multiply bdvk length by their count
+        add     ecx, 32 ; add result header len
+        jmp     .end_switch
+
+.case2_3:
+        cmp     dword [ebx], 3
+        ja      .case5 ; if subfn > 3
+        mov     ecx, dword [ebx + 12]
+        jmp     .end_switch
+
+.case5:
+        cmp     dword [ebx], 5
+        jnz     .case6
+        mov     ecx, 40
+        jmp     .end_switch
+
+.case6:
+        cmp     dword [ebx], 6
+        jnz     .switch_none
+        mov     ecx, 32
+        jmp     .end_switch
+
+.switch_none:
+        cmp     ecx, ecx
+        jmp     .ret
+      
+.end_switch:
+        stdcall is_region_userspace, edx, ecx
+.ret:
+        pop     edx ecx ebx
+        ret
+endp
+
+sys_fileSystemUnicode: ; with user pointer correctness checking
+; in: ebx -> f.80 parameter structure
+        stdcall file_system_is_operation_safe, ebx
+        jz      @f
+
+        DEBUGF  1, "sysfn80 addr error\n"
+        mov     dword [image_of_eax], ERROR_MEMORY_POINTER
+        ret
+@@:
+        jmp     fileSystemUnicode
+
+;System function 70
+sys_file_system_lfn: ; with user pointer correctness checking
+; in: ebx -> f.70 parameter structure
+        stdcall file_system_is_operation_safe, ebx
+        jz      @f
+
+        DEBUGF  1, "sysfn70 addr error\n"
+        mov     dword [image_of_eax], ERROR_MEMORY_POINTER
+        ret
+@@:
+        jmp     file_system_lfn
+
+;file_system_lfn_protected returns values not in registers, but in their images
+;on stack. Make a short wrapper to actually return values in registers.
+file_system_lfn_protected_registers:
+        pushad
+        call    file_system_lfn_protected
+        popad
+        ret
 
 file_system_lfn_protected:
         pushad
@@ -458,6 +656,14 @@ sys_current_directory:  ; sysfunction 30
 
 .get:
 ; in: ecx -> buffer, edx = length, eax = encoding
+        stdcall is_region_userspace, ecx, edx
+        jz      @f
+
+        ; if illegal buffer given
+        xor     edx, edx
+        jmp     .ret
+@@:
+
         mov     esi, edi
         inc     esi
         mov     edi, ecx
@@ -690,10 +896,7 @@ include "parse_fn.inc"
 include "fs_common.inc"
 include "iso9660.inc"   ; read for CD filesystem
 include "fat.inc"
+include "exfat.inc"
 include "ntfs.inc"
 include "ext.inc"
-; include "xfs.asm"
-
-xfs_create_partition:
-        xor     eax, eax
-        ret
+include "xfs.asm"

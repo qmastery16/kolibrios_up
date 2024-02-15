@@ -1,75 +1,75 @@
 ;-----------------------------------------------------------------------------
 text:
 if lang eq ru
-	db ' UNUSED1                        '
-	db ' UNUSED2                        '
-	db ' 3D ’…Œ€Ÿ ‘’€              '
-	db ' 3D ‘‚…’‹€Ÿ ‘’€             '
-	db ' ‡€ƒ‹‚Š Š€                 '
-	db ' €—€Ÿ ‹€‘’œ                '
-	db ' ŠŠ€ ‚ €—…‰ ‹€‘’ˆ       '
-	db ' ’…Š‘’ € ŠŠ…                '
-	db ' ’…Š‘’ ‚ €—…‰ ‹€‘’ˆ        '
-	db ' ƒ€”ˆŠ€ ‚ €—…‰ ‹€‘’ˆ      '
+	db ' Unused1                        '
+	db ' Unused2                        '
+	db ' 3d â¥¬­ ï áâ®à®­               '
+	db ' 3d á¢¥â« ï áâ®à®­              '
+	db ' ‡ £®«®¢®ª ®ª­                  '
+	db ' ”®­ ®ª­                        '
+	db ' Š­®¯ª                          '
+	db ' ’¥ªáâ ­  ª­®¯ª¥                '
+	db ' ’¥ªáâ ¢ ®ª­¥                   '
+	db ' ƒà ä¨ª  ¢ ®ª­¥                 '
 	db 'x'
 else if lang eq et
-	db ' UNUSED1                        '
-	db ' UNUSED2                        '
-	db ' WORK 3D DARK                   '
-	db ' WORK 3D LIGHT                  '
-	db ' AKNA PEALKIRI                  '
-	db ' AKNA TÖÖPIIRKOND               '
-	db ' AKNA TÖÖPIIRKONNA NUPP         '
-	db ' AKNA TÖÖPIIRKONNA NUPPU TEKST  '
-	db ' AKNA TÖÖPIIRKONNA TEKST        '
-	db ' AKNA TÖÖPIIRKONNA GRAAFIKA     '
+	db ' Unused1                        '
+	db ' Unused2                        '
+	db ' 3d dark                        '
+	db ' 3d light                       '
+	db ' Akna pealkiri                  '
+	db ' Akna tööpiirkond               '
+	db ' Akna tööpiirkonna nupp         '
+	db ' Akna tööpiirkonna nuppu tekst  '
+	db ' Akna tööpiirkonna tekst        '
+	db ' Akna tööpiirkonna graafika     '
 	db 'x'
 else
-	db ' UNUSED1                        '
-	db ' UNUSED2                        '
-	db ' WORK 3D DARK                   '
-	db ' WORK 3D LIGHT                  '
-	db ' WINDOW TITLE                   '
-	db ' WORK AREA BACKGROUND           '
-	db ' WORK AREA BUTTON               '
-	db ' WORK AREA BUTTON TEXT          '
-	db ' WORK AREA TEXT                 '
-	db ' WORK AREA GRAPH                '
+	db ' Unused1                        '
+	db ' Unused2                        '
+	db ' 3d dark                        '
+	db ' 3d light                       '
+	db ' Window title                   '
+	db ' Window background              '
+	db ' Button                         '
+	db ' Button text                    '
+	db ' Window text                    '
+	db ' Window graph                   '
 	db 'x'
 end if
 ;-----------------------------------------------------------------------------
 if lang eq ru
-	sz t1,'‡€ƒ“‡ˆ’œ  ‘•€ˆ’œ                                   ˆŒ…ˆ’œ'
+	sz t1,'‡€ƒ“‡ˆ’œ  ‘•€ˆ’œ                                       ˆŒ…ˆ’œ'
 else if lang eq et
-	sz t1,'  LAADI     SALVESTA                                    KINNITA'
+	sz t1,'  LAADI     SALVESTA                                        KINNITA'
 else
-	sz t1,'  LOAD        SAVE                                       APPLY'
+	sz t1,'  LOAD       SAVE                                            APPLY'
 end if
 ;-----------------------------------------------------------------------------
 if lang eq ru
-	sz t2,'‡€ƒ“‡ˆ’œ                3D   ‹‘Šˆ…                  ˆŒ…ˆ’œ'
+	sz t2,'‡€ƒ“‡ˆ’œ                3D   ‹‘Šˆ…                      ˆŒ…ˆ’œ'
 else if lang eq et
-	sz t2,'  LAADI                  3D    LAME                     KINNITA'
+	sz t2,'  LAADI                  3D    LAME                         KINNITA'
 else
-	sz t2,'  LOAD                   3D    FLAT                      APPLY'
+	sz t2,'  LOAD                   3D    FLAT                          APPLY'
 end if
 ;-----------------------------------------------------------------------------
 select_dtp_text:
 if lang eq ru
-	db ' ‚› –‚…’‚ƒ ”Œ‹…ˆŸ: ',0
+	db ' ‚ë¡®à æ¢¥â®¢®£® ®ä®à¬«¥­¨ï: ',0
 else if lang eq et
-	db ' VALIK VARVISKEEME: ',0
+	db ' Valik varviskeeme: ',0
 else
-	db ' CHOICE OF COLOR SCHEMES: ',0
+	db ' Choice of color schemes: ',0
 end if
 ;-----------------------------------------------------------------------------
 select_skin_text:
 if lang eq ru
-	db ' ‚› ˜Š“Šˆ: ',0
+	db ' ‚ë¡®à áª¨­ : ',0
 else if lang eq et
-	db ' VALIK NAHAD: ',0
+	db ' Valik nahad: ',0
 else
-	db ' CHOICE OF SKINS: ',0
+	db ' Choice of skins: ',0
 end if
 ;-----------------------------------------------------------------------------
 if lang eq ru
@@ -108,30 +108,33 @@ else
   title db 'Windows settings',0
 end if
 ;---------------------------------------------------------------------
+LibIniImportTable:
+library                                                 \          
+        libini, 'libini.obj'          
+          
+import  libini, \        
+        ini_set_int  ,'ini_set_int' 
+
+aIni          db  '/sys/settings/system.ini',0 
+aSectionSkn   db  'style',0
+aButtonStyle  db  'buttons_gradient',0
+;---------------------------------------------------------------------
 l_libs_start:
 
-library01  l_libs system_dir_Boxlib+9, cur_dir_path, library_path, system_dir_Boxlib, \
-err_message_found_lib1, head_f_l, Box_lib_import, err_message_import1, head_f_i
+library01  l_libs system_dir_Boxlib+9, library_path, system_dir_Boxlib, \
+ Box_lib_import
 
-library02  l_libs system_dir_ProcLib+9, cur_dir_path, library_path, system_dir_ProcLib, \
-err_message_found_lib2, head_f_l, ProcLib_import, err_message_import2, head_f_i
+library02  l_libs system_dir_ProcLib+9, library_path, system_dir_ProcLib, \
+ ProcLib_import
 
 end_l_libs:
 ;---------------------------------------------------------------------
 system_dir_Boxlib	db '/sys/lib/box_lib.obj',0
 system_dir_ProcLib	db '/sys/lib/proc_lib.obj',0
 
-head_f_i:
-head_f_l	db 'System error',0
-
-err_message_found_lib1	db 'box_lib.obj - Not found!',0
-err_message_found_lib2	db 'proc_lib.obj - Not found!',0
-
-err_message_import1	db 'box_lib.obj - Wrong import!',0
-err_message_import2	db 'proc_lib.obj - Wrong import!',0
-
 ;---------------------------------------------------------------------
 align 4
+
 ProcLib_import:
 OpenDialog_Init		dd aOpenDialog_Init
 OpenDialog_Start	dd aOpenDialog_Start
@@ -195,13 +198,12 @@ PathShow_draw		dd sz_PathShow_draw
 Frame_draw		dd sz_Frame_draw
 ;Version_frame		dd szVersion_frame
 
-			dd 0
-			dd 0
+			dd 0,0
 
 ;a_init			db 'lib_init',0
 ;a_version		db 'version',0
 
-;aEdit_box_draw		db 'edit_box',0
+;aEdit_box_draw		db 'edit_box_draw',0
 ;aEdit_box_key		db 'edit_box_key',0
 ;aEdit_box_mouse	db 'edit_box_mouse',0
 ;aVersion_ed		db 'version_ed',0
@@ -243,24 +245,24 @@ sz_Frame_draw		db 'frame_draw',0
 ;---------------------------------------------------------------------
 PathShow_data_1:
 .type			dd 0	;+0
-.start_y		dw frame_1.y+10	;+4
-.start_x		dw frame_1.x+7	;+6
+.start_y		dw frame_1.y+19	;+4
+.start_x		dw frame_1.x+15	;+6
 .font_size_x		dw 6	;+8	; 6 - for font 0, 8 - for font 1
-.area_size_x		dw frame_1.width-20	;+10
+.area_size_x		dw frame_1.w-28	;+10
 .font_number		dd 0	;+12	; 0 - monospace, 1 - variable
 .background_flag	dd 0	;+16
 .font_color		dd 0x0	;+20
 .background_color	dd 0x0	;+24
-.text_pointer		dd fname	;+28
+.text_pointer		dd dtp_name	;+28
 .work_area_pointer	dd text_work_area	;+32
 .temp_text_length	dd 0	;+36
 ;---------------------------------------------------------------------
 PathShow_data_2:
 .type			dd 0	;+0
-.start_y		dw frame_2.y+10	;+4
-.start_x		dw frame_2.x+7	;+6
+.start_y		dw frame_2.y+19	;+4
+.start_x		dw frame_2.x+15	;+6
 .font_size_x		dw 6	;+8	; 6 - for font 0, 8 - for font 1
-.area_size_x		dw frame_2.width-20	;+10
+.area_size_x		dw frame_2.w-28	;+10
 .font_number		dd 0	;+12	; 0 - monospace, 1 - variable
 .background_flag	dd 0	;+16
 .font_color		dd 0x0	;+20
@@ -279,7 +281,7 @@ OpenDialog_data:
 .start_path		dd open_dialog_path	;+24
 .draw_window		dd draw_window	;+28
 .status			dd 0	;+32
-.openfile_pach 		dd fname	;+36
+.openfile_pach 		dd dtp_name	;+36
 .filename_area		dd filename_area	;+40
 .filter_area		dd Filter
 .x:
@@ -337,9 +339,6 @@ Filter2:
 .end:
 	db 0
 
-start_temp_file_name:
-	db 'default.dtp',0
-
 default_skin:
 	db '/sys/default.skn',0
 default_dtp:
@@ -365,7 +364,7 @@ ColorDialog_data:
 cd_communication_area_name:
 	db 'FFFFFFFF_color_dialog',0
 colordialog_path:
-	db '/rd/1/colrdial',0
+	db '/sys/colrdial',0
 ;---------------------------------------------------------------------
 frame_data:
 .type			dd 0 ;+0
@@ -380,8 +379,8 @@ frame_data:
 .draw_text_flag		dd 1 ;+20
 .text_pointer		dd 0 ;+24
 .text_position		dd 0 ;+28
-.font_number		dd 0 ;+32
-.font_size_y		dd 9 ;+36
+.font_number		dd 1 ;+32
+.font_size_y		dd 14 ;+36
 .font_color		dd 0x0 ;+40
 .font_backgr_color	dd 0xffffff ;+44
 ;---------------------------------------------------------------------

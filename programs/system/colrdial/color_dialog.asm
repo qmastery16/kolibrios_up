@@ -68,19 +68,14 @@
 ; Free area ; +68
 ;---------------------------------------------------------------------
   use32
-  org	 0x0
-
+  org	 0
   db	 'MENUET01'
-  dd	 0x01
-  dd	 START
-  dd	 IM_END
-  dd	 I_END
-  dd	 stacktop
-  dd	 param
-  dd	 path
+  dd	 1, START, IM_END, I_END, stacktop, param, path
 ;---------------------------------------------------------------------
 include '../../macros.inc'
-include '../../develop/libraries/box_lib/load_lib.mac'
+include '../../proc32.inc'
+include '../../KOSfuncs.inc'
+include '../../load_lib.mac'
 include '../../develop/libraries/box_lib/trunk/box_lib.mac'
 ;include 'lang.inc'
 ;include '../../debug.inc'
@@ -104,25 +99,26 @@ w_size_y = 350
 c_start_x = t_start_x + p_size_y + 10
 c_start_y = 10
 
-c_size_x = 40
+c_size_x = 27
 c_size_y = 20
+ed_size_x = 53
 ;---------------------------------------------------------------------
 x_minimal_size equ 350
 y_minimal_size equ 250
 ;---------------------------------------------------------------------
 START:
-	mcall	68,11
-	mcall	66,1,1
-	mcall	40,0x27
-;	mcall	40,0x7
-	call	get_communication_area
-	call	get_active_pocess
-	call	clear_colors_history
+	mcall	SF_SYS_MISC,SSF_HEAP_INIT
+	;mcall	SF_KEYBOARD,SSF_SET_INPUT_MODE,1
+	mcall	SF_SET_EVENTS_MASK,EVM_REDRAW+EVM_KEY+\
+	        EVM_BUTTON+EVM_MOUSE+EVM_MOUSE_FILTER
 ;--------------------------------------
 load_libraries	l_libs_start,end_l_libs
 	test	eax,eax
 	jnz	button.exit_2
 ;--------------------------------------
+	call	get_communication_area
+	call	get_active_pocess
+	call	clear_colors_history
 	xor	eax,eax
 	mov	al,p_size_x
 	mov	[palette_SIZE_X],eax
@@ -130,16 +126,20 @@ load_libraries	l_libs_start,end_l_libs
 	mov	[palette_SIZE_Y],eax
 	mov	[tone_SIZE_X],eax
 	mov	[tone_SIZE_Y],eax
-	mov	eax,0xff0000
-	mov	[tone_color],eax
+	
+	;set the last used color as a current one
+	mov	eax,[communication_area]
+	add	eax,28
+	mov	eax,[eax]
 	mov	[selected_color],eax
+	mov	[tone_color],eax
 	call	prepare_scrollbars_position_from_color
 ;--------------------------------------
 	mov	ecx,[palette_SIZE_Y]
 	imul	ecx,[palette_SIZE_X]
 	lea	ecx,[ecx*3]
 	inc	ecx	;reserve for stosd
-	mcall	68,12
+	mcall	SF_SYS_MISC,SSF_MEM_ALLOC
 	mov	[palette_area],eax
 ;--------------------------------------
 	call	create_palette
@@ -148,7 +148,7 @@ load_libraries	l_libs_start,end_l_libs
 	imul	ecx,[tone_SIZE_X]
 	lea	ecx,[ecx*3]
 	inc	ecx	;reserve for stosd
-	mcall	68,12
+	mcall	SF_SYS_MISC,SSF_MEM_ALLOC
 	mov	[tone_area],eax
 ;--------------------------------------
 	call    create_tone
@@ -159,7 +159,7 @@ red:
 ;---------------------------------------------------------------------
 align 4
 still:
-	mcall	10
+	mcall	SF_WAIT_EVENT
 
 	cmp	eax,1
 	je	red
@@ -177,7 +177,7 @@ still:
 ;---------------------------------------------------------------------
 align 4
 button:
-	mcall	17
+	mcall	SF_GET_BUTTON
 
 	cmp	ah, 2
 	je	palette_button
@@ -195,6 +195,8 @@ button:
 	ja	@f
 
 	sub	ah,30
+	
+	;click on a colors History 
 	movzx	eax,ah
 	shl	eax,2
 	add	eax,[communication_area]
@@ -235,40 +237,39 @@ align 4
 	mov	ebx,[communication_area]
 	mov	ecx,procinfo
 ;	mov	eax,[window_x]
-	mov	eax,[ecx+34]
+	mov	eax,[ecx+process_information.box.left]
 	shl	eax,16
-	add	eax,[ecx+42]
+	add	eax,[ecx+process_information.box.width]
 	mov	[ebx+4],eax
 ;	mov	eax,[window_y]
-	mov	eax,[ecx+38]
+	mov	eax,[ecx+process_information.box.top]
 	shl	eax,16
-	add	eax,[ecx+46]
+	add	eax,[ecx+process_information.box.height]
 	mov	[ebx+8],eax
 ;--------------------------------------
 align 4
 .exit_2:
-	mcall	-1
+	mcall	SF_TERMINATE_PROCESS
 ;---------------------------------------------------------------------
 align 4
 get_window_param:
-	mcall	9,procinfo,-1
-	mov	eax,[ebx+66]
+	mcall	SF_THREAD_INFO,procinfo,-1
+	mov	eax,[ebx+process_information.client_box.height]
 	inc	eax
 ;	mov	[window_high],eax
-	mov	eax,[ebx+62]
+	mov	eax,[ebx+process_information.client_box.width]
 	inc	eax
 ;	mov	[window_width],eax
-	mov	eax,[ebx+70]
+	mov	eax,dword[ebx+process_information.wnd_state]
 ;	mov	[window_status],eax
 	ret
 ;---------------------------------------------------------------------
 align 4
 get_communication_area:
-	xor	eax,eax
-	mov	al,[param]
+	movzx	eax,byte[param]
 	test	eax,eax
 	jz	@f
-	mcall	68,22,param,,0x01
+	mcall	SF_SYS_MISC,SSF_MEM_OPEN,param,,0x01
 	mov	[communication_area],eax
 ;	movzx	ebx,word [eax+2]
 ;	mov	[color_dialog_type],ebx
@@ -288,9 +289,9 @@ get_communication_area:
 ;---------------------------------------------------------------------
 align 4
 get_active_pocess:
-	mcall	9,procinfo,-1
-	mov	ecx,[ebx+30]	; PID
-	mcall	18,21
+	mcall	SF_THREAD_INFO,procinfo,-1
+	mov	ecx,[ebx+process_information.PID]
+	mcall	SF_SYSTEM,SSF_GET_THREAD_SLOT
 	mov	[active_process],eax	; WINDOW SLOT
 	mov	ebx,[communication_area]
 	test	ebx,ebx
@@ -308,7 +309,7 @@ clear_colors_history:
 	add	edi,28
 	mov	ecx,10
 	cld
-	mov	eax,0xffffff
+	mov	eax,0x06BEEE
 	rep	stosd
 @@:
 	ret
@@ -333,7 +334,7 @@ scroll_colors_history:
 ;---------------------------------------------------------------------
 align 4
 palette_button:
-	mcall	37,1
+	mcall	SF_MOUSE_GET,SSF_WINDOW_POSITION
 	and	eax,0xffff
 	sub	eax,p_start_y
 	imul	eax,p_size_x
@@ -350,7 +351,7 @@ palette_button:
 ;---------------------------------------------------------------------
 align 4
 tone_button:
-	mcall	37,1
+	mcall	SF_MOUSE_GET,SSF_WINDOW_POSITION
 	mov	ebx,eax
 	and	eax,0xffff
 	shr	ebx,16
@@ -381,12 +382,18 @@ align 4
 prepare_scrollbars_position_from_color:
 ; in: eax = selected color
 	movzx	ebx,al
+	inc bl
+	neg bl
 	mov	[scroll_bar_data_blue.position],ebx
 	shr	eax,8
 	mov	bl,al
+	inc bl
+	neg bl
 	mov	[scroll_bar_data_green.position],ebx
 	shr	eax,8
 	mov	bl,al
+	inc bl
+	neg bl
 	mov	[scroll_bar_data_red.position],ebx
 	ret
 ;---------------------------------------------------------------------
@@ -394,18 +401,40 @@ align 4
 prepare_color_from_scrollbars_position:
 ; out: ebx = selected color
 	mov	eax,[scroll_bar_data_red.position]
+	inc al
+	neg al
 	movzx	ebx,al
 	shl	ebx,8
 	mov	eax,[scroll_bar_data_green.position]
+	inc al
+	neg al
 	mov	bl,al
 	shl	ebx,8
 	mov	eax,[scroll_bar_data_blue.position]
+	inc al
+	neg al
 	mov	bl,al
 	ret
 ;---------------------------------------------------------------------
 align 4
 key:
-	mcall	2
+	mcall	SF_GET_KEY
+	
+	test word[edit1.flags],10b ;ed_focus
+	jne @f
+	cmp	ah,027	; Esc
+	je	button.exit
+	jmp still
+@@:
+	stdcall [edit_box_key], edit1
+	stdcall conv_str_to_int, [edit1.text]
+	cmp [selected_color],eax
+	je still
+	mov	[selected_color],eax
+	call	prepare_scrollbars_position_from_color
+	;call	draw_selected_color
+	mcall	SF_DRAW_RECT,<c_start_x,c_size_x>,<c_start_y,c_size_y>,[selected_color]
+	call	draw_scrollbars
 	jmp	still
 ;---------------------------------------------------------------------
 align 4
@@ -419,27 +448,25 @@ mouse:
 ;--------------------------------------
 align 4
 .red:
-	push	dword scroll_bar_data_red
-	call	[scrollbar_ver_mouse]
+	stdcall	[scrollbar_ver_mouse], scroll_bar_data_red
 	cmp	[scroll_bar_data_red.delta2],0
 	jne	@f
 ;--------------------------------------
 align 4
 .green:
-	push	dword scroll_bar_data_green
-	call	[scrollbar_ver_mouse]
+	stdcall	[scrollbar_ver_mouse], scroll_bar_data_green
 	cmp	[scroll_bar_data_green.delta2],0
 	jne	@f
 ;--------------------------------------
 align 4
 .blue:
-	push	dword scroll_bar_data_blue
-	call	[scrollbar_ver_mouse]
-;	cmp	[scroll_bar_data_blue.delta2],0
-;	jne	@f
+	stdcall	[scrollbar_ver_mouse], scroll_bar_data_blue
+	cmp	[scroll_bar_data_blue.delta2],0
+	jne	@f
 ;--------------------------------------
 align 4
 @@:
+	stdcall [edit_box_mouse], edit1
 	call	prepare_color_from_scrollbars_position
 	cmp	[selected_color],ebx
 	je	still
@@ -449,11 +476,11 @@ align 4
 ;---------------------------------------------------------------------
 align 4
 draw_selected_color:
-	mcall	13,<c_start_x,c_size_x>,<c_start_y,c_size_y>,[selected_color]
-	mcall	13,<c_start_x+c_size_x+10,c_size_x>,<c_start_y,c_size_y>,0xffffff
-	mov	ecx,[selected_color]
-	and	ecx,0xffffff
-	mcall	47,0x00060100,,<c_start_x+c_size_x+13,c_start_y+(c_size_y-6)/2>,0
+	mcall	SF_DRAW_RECT,<c_start_x,c_size_x>,<c_start_y,c_size_y>,[selected_color]
+	stdcall hex_in_str, sz_0x,[selected_color],6
+	mov byte[sz_0x+6],0
+	stdcall [edit_box_set_text],edit1,sz_0x
+	stdcall [edit_box_draw],edit1
 	ret
 ;---------------------------------------------------------------------
 align 4
@@ -464,37 +491,34 @@ create_and_draw_tone:
 ;---------------------------------------------------------------------
 align 4
 draw_tone:
-	mcall	65,[tone_area],<[tone_SIZE_X],[tone_SIZE_Y]>,<t_start_x,t_start_y>,24
+	mcall	SF_PUT_IMAGE_EXT,[tone_area],<[tone_SIZE_X],[tone_SIZE_Y]>,<t_start_x,t_start_y>,24
 	ret
 ;---------------------------------------------------------------------
+align 4
 draw_scrollbars:
-	push	dword scroll_bar_data_red
-	call	[scrollbar_ver_draw]
-	push	dword scroll_bar_data_green
-	call	[scrollbar_ver_draw]
-	push	dword scroll_bar_data_blue
-	call	[scrollbar_ver_draw]
+	stdcall	[scrollbar_ver_draw], scroll_bar_data_red
+	stdcall	[scrollbar_ver_draw], scroll_bar_data_green
+	stdcall	[scrollbar_ver_draw], scroll_bar_data_blue
 	ret
 ;---------------------------------------------------------------------
 align 4
 draw_history_frame:
-	mov	[frame_data.x],dword (c_start_x+c_size_x*2+10*2)*65536+80
+	mov	[frame_data.x],dword (c_start_x+c_size_x+ed_size_x+10*2)*65536+80
 	mov	[frame_data.y],dword (p_start_y+5)*65536+(p_size_y-5)
 
 	mov	[frame_data.draw_text_flag],dword 1
 
 	mov	[frame_data.text_pointer],dword history_text
-	push	dword frame_data
-	call	[Frame_draw]
+	stdcall	[Frame_draw], frame_data
 	ret
 ;---------------------------------------------------------------------
 align 4
 draw_button_row:
 	mov	edx,0x60000000 + 30		; BUTTON ROW
 ;	mov	ebx,220*65536+14
-	mov	ebx,(c_start_x+c_size_x*2+10*3)*65536+14
+	mov	ebx,(c_start_x+c_size_x+ed_size_x+10*3)*65536+14
 	mov	ecx,25*65536+14
-	mov	eax,8
+	mov	eax,SF_DEFINE_BUTTON
 ;-----------------------------------
 align 4
 .newb:
@@ -507,10 +531,12 @@ align 4
 ;---------------------------------------------------------------------
 align 4
 draw_color_value:
-	mov	ebx,(c_start_x+c_size_x*3+10)*65536+(c_size_x-1)
+	movzx ebx,word[frame_data.x_start]
+	shl ebx,16
+	add ebx,(22 shl 16)+39
 	mov	ecx,28*65536+11
 	mov	edx,0xffffff
-	mov	eax,13
+	mov	eax,SF_DRAW_RECT
 	mov	edi,10
 	mov	esi,[communication_area]
 	add	esi,28
@@ -519,14 +545,13 @@ align 4
 @@:
 	mcall
 	pusha
-	mov	edx,ebx
-	add	edx,2 shl 16
+	lea	edx,[ebx+(2 shl 16)]
 	shr	ecx,16
 	mov	dx,cx
 	add	dx,2
 	mov	ecx,[esi]
 	and	ecx,0xffffff
-	mcall	47,0x00060100,,,0
+	mcall	SF_DRAW_NUMBER,0x00060100,,,0
 	popa
 
 	add	ecx,24*65536
@@ -542,9 +567,9 @@ draw_colours:
 	mov	esi,[communication_area]
 	add	esi,28
 ;	mov	ebx,220*65536+14
-	mov	ebx,(c_start_x+c_size_x*2+10*3)*65536+14
+	mov	ebx,(c_start_x+c_size_x+ed_size_x+10*3)*65536+14
 	mov	ecx,27*65536+14
-	mov	eax,13
+	mov	eax,SF_DRAW_RECT
 	mov	[frame_data.draw_text_flag],dword 0
 ;--------------------------------------
 align 4
@@ -562,8 +587,7 @@ newcol:
 	mov	[frame_data.x],ebx
 	mov	[frame_data.y],ecx
 
-	push	dword frame_data
-	call	[Frame_draw]
+	stdcall	[Frame_draw], frame_data
 
 	pop	ecx ebx
 
@@ -577,18 +601,18 @@ newcol:
 ;----------------------------------------------------------------------
 align 4
 draw_window:
-	mcall	12,1
-;	mcall	0, <w_start_x,w_size_x>, <w_start_y,w_size_y>, 0x33AABBCC,,title
+	mcall	SF_REDRAW,SSF_BEGIN_DRAW
+;	mcall	SF_CREATE_WINDOW, <w_start_x,w_size_x>, <w_start_y,w_size_y>, 0x33AABBCC,,title
 	xor	esi,esi
-	mcall	0,[window_x],[window_y], 0x34EEEeee,,title
-	mcall	8,<p_start_x,[palette_SIZE_X]>,<p_start_y,[palette_SIZE_Y]>,0x60000002
+	mcall	SF_CREATE_WINDOW,[window_x],[window_y], 0x34EEEeee,,title
+	mcall	SF_DEFINE_BUTTON,<p_start_x,[palette_SIZE_X]>,<p_start_y,[palette_SIZE_Y]>,0x60000002
 	mcall	,<t_start_x,[tone_SIZE_X]>,<t_start_y,[tone_SIZE_Y]>,0x60000003
 	mcall	,<296,80>,<280,22>,4,0x37A4D4
 	mcall	,<402,80>,        ,1
-	mcall   4,<332,289>,0x802C7B9E,OK_Cancel
+	mcall   SF_DRAW_TEXT,<332,289>,0x802C7B9E,OK_Cancel
 	mcall   ,<331,288>,0x80FFFfff
 	xor	ebp,ebp
-	mcall	65,[palette_area],<[palette_SIZE_X],[palette_SIZE_Y]>,<p_start_x,p_start_y>,24
+	mcall	SF_PUT_IMAGE_EXT,[palette_area],<[palette_SIZE_X],[palette_SIZE_Y]>,<p_start_x,p_start_y>,24
 	call	draw_tone
 	call	draw_selected_color
 	xor	eax,eax
@@ -601,8 +625,73 @@ draw_window:
 	call	draw_button_row
 	call	draw_colours
 	call	draw_color_value
-	mcall	12,2
+	mcall	SF_REDRAW,SSF_END_DRAW
 	ret
+;---------------------------------------------------------------------
+align 4
+proc hex_in_str, buf:dword,val:dword,zif:dword
+pushad
+	mov edi,[buf]
+	mov ecx,[zif]
+	add edi,ecx
+	dec edi
+	mov ebx,[val]
+
+	.cycle:
+		mov al,bl
+		and al,0xf
+		cmp al,10
+		jl @f
+			add al,'A'-'0'-10
+		@@:
+		add al,'0'
+		mov byte[edi],al
+		dec edi
+		shr ebx,4
+	loop .cycle
+popad
+	ret
+endp
+;---------------------------------------------------------------------
+;input:
+; buf - pointer to a hexadecimal string
+;output:
+; eax - number
+align 4
+proc conv_str_to_int uses ebx esi, buf:dword
+	xor eax,eax
+	xor ebx,ebx
+	mov esi,[buf]
+
+	.cycle_16:
+		mov bl,byte[esi]
+		cmp bl,'0'
+		jl @f
+		cmp bl,'f'
+		jg @f
+		cmp bl,'9'
+		jle .us1
+			cmp bl,'A'
+			jl @f ;skip the chars not in between '9' and 'A'
+		.us1: ;составное условие
+		cmp bl,'F'
+		jle .us2
+			cmp bl,'a'
+			jl @f ;skip the chars not in between 'F' and 'a'
+			sub bl,32 ;convert symbols to uppercase for convenience
+		.us2: ;составное условие
+			sub bl,'0'
+			cmp bl,9
+			jle .cor1
+				sub bl,7 ;convert 'A' to '10'
+			.cor1:
+			shl eax,4
+			add eax,ebx
+			inc esi
+			jmp .cycle_16
+	@@:
+	ret
+endp
 ;---------------------------------------------------------------------
 include 'palette.inc'
 ;---------------------------------------------------------------------

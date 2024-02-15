@@ -1,8 +1,9 @@
 
-#define SHELL_VERSION "0.7.7"
+#define SHELL_VERSION "0.8.3"
 
-extern char	PATH[256];
-extern char	PARAM[256];
+char	cmdline[256];
+
+char    tmpstr[64];
 
 char		title[64];
 char		cur_dir[FILENAME_MAX];
@@ -51,7 +52,9 @@ int cmd_exit(char arg[]);
 int cmd_memory(char arg[]);
 int cmd_help(char cmd[]);
 int cmd_kill(char process[]);
+int cmd_pkill(char process_name[]);
 int cmd_ls(char dir[]);
+int cmd_lsmod(char param[]);
 int cmd_mkdir(char dir[]);
 int cmd_more(char file[]);
 int cmd_ps(char arg[]);
@@ -66,7 +69,10 @@ int cmd_shutdown(char arg[]);
 int cmd_uptime(char param[]);
 int cmd_killall(char process_name[]);
 int cmd_history(char arg[]);
+int cmd_kfetch(char param[]);
 int cmd_cp(char param[]);
+int cmd_mv(char param[]);
+int cmd_ren(char param[]);
 int cmd_waitfor(char param[]);
 
 /// ===========================================================

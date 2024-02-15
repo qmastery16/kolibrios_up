@@ -12,7 +12,6 @@
 #include "../lib/random.h"
 #include "../lib/kfont.h"
 
-#include "../lib/obj/libio.h"
 #include "../lib/obj/libimg.h"
 #include "../lib/obj/libini.h"
 #include "../lib/obj/proc_lib.h"
@@ -27,26 +26,26 @@
 //===================================================//
 
 //simple open dialog data
-char default_dir[] = "/rd/1";
+char default_dir[] = "/sys";
 od_filter filter2 = { 15, "MP3\0WAV\0XM\0\0" };
 
-#define ABOUT_MESSAGE "Pixie Player v2.92 Final
+#define ABOUT_MESSAGE "                   v2.94 Final
 
-     A tiny music folder player.
-     Supports MP3, WAV, XM audio file formats.
+          A tiny music folder player.
+    Supports MP3, WAV, XM audio file formats.
 
 Hot keys:
- Open file: O key
- Play/Stop: Space or P key
- Start playing selected file: Enter
- Goto next/previous track: Ctrl + Left/Right
- Change sound volume: Left/Right key
- Remove from the list: Delete
- Permanently delete file: Shift + Delete
- Show file info: I
- Repeat: R
- Shuffle: S
- Mute: M
+  Open file: O key
+  Play/Stop: Space or P key
+  Start playing selected file: Enter
+  Goto next/previous track: Ctrl + Left/Right
+  Change sound volume: Left/Right key
+  Remove from the list: Delete
+  Permanently delete file: Shift + Delete
+  Show file info: I
+  Repeat: R
+  Shuffle: S
+  Mute: M
 
 kolibri-n.org & aspero.pro"
 
@@ -76,8 +75,8 @@ enum {
 int player_run_id;
 int notify_run_id;
 
-bool repeat;
-bool shuffle;
+bool repeat=false;
+bool shuffle=false;
 
 int current_playing_file_n=0;
 
@@ -96,6 +95,8 @@ enum {
 	PLAYBACK_MODE_PLAYING
 };
 
+libimg_image skin;
+
 #define LAST_FOLDER_EXISTS 1
 
 //===================================================//
@@ -110,7 +111,6 @@ enum {
 void LoadLibraries()
 {
 	load_dll(boxlib, #box_lib_init,0);
-	load_dll(libio, #libio_init,1);
 	load_dll(libimg, #libimg_init,1);
 	load_dll(libini, #lib_init,1);
 	load_dll(Proc_lib, #OpenDialog_init,0);
@@ -127,13 +127,10 @@ void main()
 		if (work_folder) param=LAST_FOLDER_EXISTS;
 	}
 	kfont.init(DEFAULT_FONT);	
-	SetEventMask(EVM_REDRAW + EVM_KEY + EVM_BUTTON + EVM_MOUSE + EVM_MOUSE_FILTER);
-	loop()
+	@SetEventMask(EVM_REDRAW + EVM_KEY + EVM_BUTTON + EVM_MOUSE + EVM_MOUSE_FILTER);
+	loop() switch(@WaitEventTimeout(10)) 
 	{
-	  WaitEventTimeout(10);
-	  switch(EAX & 0xFF) {
 	  	case evMouse:
-			if (!CheckActiveProcess(Form.ID)) break;
 			mouse.get();
 			scrollbar_v_mouse (#scroll1);
 			if (list.first != scroll1.position)
@@ -148,13 +145,13 @@ void main()
 				if (mouse.dblclick) EventStartPlayingSelectedItem();
 				if (mouse.down) && (mouse.key&MOUSE_LEFT) 
 					&& (list.ProcessMouse(mouse.x, mouse.y)) DrawPlayList();
-				if (mouse.down) && (mouse.key&MOUSE_RIGHT) EventShowAbout();
 			}
 			if(mouse.key&MOUSE_LEFT) && (mouse.x<14) 
 				&& (window_mode == WINDOW_MODE_SMALL) EventDragWindow();
+			if (mouse.down) && (mouse.y>skin_h) && (mouse.key&MOUSE_RIGHT) EventShowAbout();
 			break;
 		case evButton:
-			switch(GetButtonID()) {
+			switch(@GetButtonID()) {
 				case BUTTON_WINDOW_CLOSE: EventExitApp(); break;
 				case BUTTON_WINDOW_MINIMIZE: MinimizeWindow(); break;
 				case BUTTON_WINDOW_REDUCE: EventChangeWindowMode(); break;
@@ -205,8 +202,7 @@ void main()
 			break;
 		default:
 			EventCheckSongFinished();
-	  }
-   }
+	}
 }
 
 
@@ -258,7 +254,7 @@ void DrawPlayList()
 void draw_window() {
 	GetProcessInfo(#Form, SelfInfo);
 	DrawTopPanel();
-	IF (Form.status_window>=2) return;
+	IF (Form.status_window&ROLLED_UP) return;
 	if (window_mode == WINDOW_MODE_NORMAL)
 	{
 		DrawPlayList();
@@ -269,18 +265,17 @@ void draw_window() {
 void DrawTopPanel()
 {
 	int kfont_width;
-	int button_y;
 	//Mode depended
 	if (window_mode == WINDOW_MODE_NORMAL)
 	{
-		button_y = 46;
+		#define BIGBUTTON_Y 46
 		img_draw stdcall(skin.image, 0, 0, skin.w, skin.h, 0, 0);
 		if (playback_mode != PLAYBACK_MODE_STOPED) 
-			img_draw stdcall(skin.image, 47, button_y, 41, 21, skin.w+1, WIN_H_SMALL+1);
+			img_draw stdcall(skin.image, 47, BIGBUTTON_Y, 41, 21, skin.w+1, WIN_H_SMALL+1);
 		if (repeat) 
-			img_draw stdcall(skin.image, 217, button_y+2, 17,17,skin.w+43, WIN_H_SMALL+1);
+			img_draw stdcall(skin.image, 189, BIGBUTTON_Y+5, 14,14,skin.w+44, WIN_H_SMALL+3);
 		if (shuffle) 
-			img_draw stdcall(skin.image, 236, button_y+2, 17,17, skin.w+62, WIN_H_SMALL+1);
+			img_draw stdcall(skin.image, 212, BIGBUTTON_Y+5, 14,14, skin.w+59, WIN_H_SMALL+3);
 
 		if (!work_folder) DrawPixieTitle("Pixie");
 		else DrawPixieTitle(#work_folder + strrchr(#work_folder, '/'));
@@ -288,30 +283,30 @@ void DrawTopPanel()
 			theme.color_top_panel_song_name, list.font_type, #current_filename);
 		if (kfont_width>skin.w-15) DrawBar(skin.w-1, 24, 1, list.item_h, theme.color_list_border);
 	 	//Playing control buttons
-		DefineHiddenButton(7, button_y, 38, 20, BUTTON_PLAYBACK_PREV);
-		DefineHiddenButton(48, button_y, 38, 20, BUTTON_PLAYBACK_PLAY_PAUSE);
-		DefineHiddenButton(87, button_y, 38, 20, BUTTON_PLAYBACK_NEXT);
+		DefineHiddenButton(7, BIGBUTTON_Y, 38, 20, BUTTON_PLAYBACK_PREV);
+		DefineHiddenButton(48, BIGBUTTON_Y, 38, 20, BUTTON_PLAYBACK_PLAY_PAUSE);
+		DefineHiddenButton(87, BIGBUTTON_Y, 38, 20, BUTTON_PLAYBACK_NEXT);
 		//Window control buttons
 		DefineHiddenButton(Form.width - 27, 1, 26, 15, BUTTON_WINDOW_CLOSE);
 		DefineHiddenButton(Form.width - 55, 1, 26, 15, BUTTON_WINDOW_MINIMIZE);
 		DefineHiddenButton(Form.width - 83, 1, 26, 15, BUTTON_WINDOW_REDUCE);
 		//Other buttons
-		DefineHiddenButton(218, button_y+3, 17, 16, BUTTON_REPEAT);
-		DefineHiddenButton(237, button_y+3, 17, 16, BUTTON_SHUFFLE);
-		DefineHiddenButton(270, button_y+3, 17, 16, BUTTON_OPEN_DIALOG);
-		DefineHiddenButton(289, button_y+3, 17, 16, BUTTON_SHOW_VOLUME);
+		DefineHiddenButton(185, BIGBUTTON_Y+3, 22, 16, BUTTON_REPEAT);
+		DefineHiddenButton(208, BIGBUTTON_Y+3, 22, 16, BUTTON_SHUFFLE);
+		DefineHiddenButton(259, BIGBUTTON_Y+3, 18, 16, BUTTON_OPEN_DIALOG);
+		DefineHiddenButton(289, BIGBUTTON_Y+3, 18, 16, BUTTON_SHOW_VOLUME);
 	}
 	else if (window_mode == WINDOW_MODE_SMALL)
 	{
-		button_y = 7;
+		#define SMBUTTON_Y 7
 		img_draw stdcall(skin.image, 0, 0, WIN_W_SMALL, WIN_H_SMALL, skin.w-1, 0);
 		if (playback_mode != PLAYBACK_MODE_STOPED) 
-			img_draw stdcall(skin.image, 46, button_y-1, 27, 19, skin.w+83, WIN_H_SMALL+1);
+			img_draw stdcall(skin.image, 46, SMBUTTON_Y-1, 27, 19, skin.w+83, WIN_H_SMALL+1);
 		DefineHiddenButton(0, 0, WIN_W_SMALL, WIN_H_SMALL, 99 + BT_NOFRAME);
 	 	//Playing control buttons
-		DefineHiddenButton(20, button_y, 24, 16, BUTTON_PLAYBACK_PREV);
-		DefineHiddenButton(46, button_y, 24, 16, BUTTON_PLAYBACK_PLAY_PAUSE);
-		DefineHiddenButton(72, button_y, 24, 16, BUTTON_PLAYBACK_NEXT);
+		DefineHiddenButton(20, SMBUTTON_Y, 24, 16, BUTTON_PLAYBACK_PREV);
+		DefineHiddenButton(46, SMBUTTON_Y, 24, 16, BUTTON_PLAYBACK_PLAY_PAUSE);
+		DefineHiddenButton(72, SMBUTTON_Y, 24, 16, BUTTON_PLAYBACK_NEXT);
 		//Window control buttons
 		DefineHiddenButton(Form.width - 20, 1, 19, 13, BUTTON_WINDOW_CLOSE);
 		DefineHiddenButton(Form.width - 20, 16, 19, 13, BUTTON_WINDOW_REDUCE);
@@ -331,10 +326,41 @@ void DrawScroller()
 	if (list.count > list.visible) scrollbar_v_draw(#scroll1);
 }
 
-void DrawPixieTitle(dword _title)
+void DrawPixieTitle(dword _t)
 {
+	char title[35];
+	strlcpy(#title, _t, sizeof(title));
+	if (strlen(#title)>30) strcpy(#title+30, "...");
 	kfont.WriteIntoWindow(8, 5, theme.color_top_panel_bg, 
-		theme.color_top_panel_folder_name, list.font_type, _title);
+	theme.color_top_panel_folder_name, list.font_type, #title);
+}
+
+void DrawAboutWindow()
+{
+	#define ABOUT_W 400
+	#define ABOUT_H 410
+	loop() switch(@WaitEvent()) 
+	{
+		case evButton: ExitProcess(); break;
+		case evKey: if (GetKeyScancode() == SCAN_CODE_ESC) ExitProcess(); break;
+		case evReDraw:
+			DefineDragableWindow(150, 200, ABOUT_W, ABOUT_H);
+
+			DrawBar(0, 0, ABOUT_W, ABOUT_H, theme.color_top_panel_bg);
+			DrawRectangle(0, 0, ABOUT_W, ABOUT_H, theme.color_list_border);
+
+			//DefineHiddenButton(ABOUT_W - 27, 1, 26, 15, BUTTON_WINDOW_CLOSE);
+			//skin.draw(ABOUT_W-28, 0, 28, 18, skin.w - 29, 0);
+			DrawCaptButton(ABOUT_W-10-80, ABOUT_H - 34, 80, 24, 2, 
+			  theme.color_top_panel_bg, 0xF5EFB3, "Cool");
+			
+			WriteText(131,16, 0x81, 0x8E7C61, "Pixie Player");
+			WriteText(130,15, 0x81, 0xF5EFB3, "Pixie Player");
+
+			WriteTextLines(10, 40, 0x90, theme.color_top_panel_song_name, ABOUT_MESSAGE, 19);
+			draw_icon_32(45, 15, theme.color_top_panel_bg, 65);
+			draw_icon_32(ABOUT_W-32-45, 15, theme.color_top_panel_bg, 65);
+	}
 }
 
 //===================================================//
@@ -406,7 +432,9 @@ void EventStartPlaying()
 	current_filename[strrchr(#current_filename, '.')-1] = '\0';
 	DrawPlayList();
 	DrawTopPanel();
+	//start_playing_time = 
 	player_run_id = RunProgram("/sys/media/ac97snd", #item_path);	
+	//player_run_id = RunProgram("/kolibrios/media/minimp3", #item_path);	
 	sprintf(#notify_message,"'Now playing:\n%s' -St",#current_filename);
 	if (!repeat) && (window_mode==WINDOW_MODE_SMALL)
 	{
@@ -536,37 +564,7 @@ void EventPermanentlyDeleteFile()
 
 void EventShowAbout()
 {
-	CreateThread(#ShowAboutThread,#menu_stak+4092);
-}
-
-void ShowAboutThread()
-{
-	proc_info pop_up;
-	loop() switch(WaitEvent())
-	{
-		case evButton: 
-			ExitProcess();
-			break;
-		case evKey:
-			GetKeys();
-			if (key_scancode == SCAN_CODE_ESC) ExitProcess();
-			break;
-		case evReDraw:
-			DefineDragableWindow(150, 200, 400, 368);
-			GetProcessInfo(#pop_up, SelfInfo);
-
-			DrawBar(0, 0, pop_up.width, pop_up.height, theme.color_top_panel_bg);
-			DrawRectangle(0, 0, pop_up.width, pop_up.height, theme.color_list_border);
-
-			DefineHiddenButton(pop_up.width - 27, 1, 26, 15, BUTTON_WINDOW_CLOSE);
-			img_draw stdcall(skin.image, pop_up.width-28, 0, 28, 18, skin.w - 29, 0);
-			DrawCaptButton(pop_up.width-10-80, pop_up.height - 34, 80, 24, 2, 
-			  theme.color_list_active_bg, theme.color_top_panel_song_name, "Cool");
-			
-			WriteTextLines(10, 10, 0x90, theme.color_top_panel_song_name, ABOUT_MESSAGE, 19);
-			DrawIcon32(10, 48, theme.color_top_panel_bg, 65);
-
-	}
+	CreateThread(#DrawAboutWindow,#menu_stak+4092);
 }
 
 /*

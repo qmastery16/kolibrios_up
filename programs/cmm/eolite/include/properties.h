@@ -1,52 +1,16 @@
-#ifdef LANG_RUS
-	?define WINDOW_TITLE_PROPERTIES "Свойства"
-	?define BTN_CLOSE "Закрыть"
-	?define BTN_APPLY "Применить"
-	?define QUEST_1 "Применить ко всем вложенным"
-	?define QUEST_2 "файлам и папкам?"
-	?define PR_T_NAME "Имя:"
-	?define PR_T_DEST "Расположение:"
-	?define PR_T_SIZE "Размер:"
-	?define CREATED_OPENED_MODIFIED "Создан:\nОткрыт:\nИзменен:"
-	?define SET_6 "Файлов: "
-	?define SET_7 " Папок: "
-	?define PR_T_CONTAINS "Содержит: "
-	?define FLAGS " Аттрибуты "
-	?define PR_T_HIDDEN "Скрытый"
-	?define PR_T_SYSTEM "Системный"
-	?define PR_T_ONLY_READ "Только чтение"
-	?define SET_BYTE_LANG "байт"
-#else // Apply to all subfolders
-	?define WINDOW_TITLE_PROPERTIES "Properties"
-	?define BTN_CLOSE "Close"
-	?define BTN_APPLY "Apply"
-	?define QUEST_1 "Apply to all subfolders"
-	?define QUEST_2 "files and Folders?"
-	?define PR_T_NAME "Name:"
-	?define PR_T_DEST "Destination:"
-	?define PR_T_SIZE "Size:"
-	?define CREATED_OPENED_MODIFIED "Created:\nOpened:\nModified:"
-	?define SET_6 "Files: "
-	?define SET_7 " Folders: "
-	?define PR_T_CONTAINS "Contains: "
-	?define FLAGS " Attributes "
-	?define PR_T_HIDDEN "Hidden"
-	?define PR_T_SYSTEM "System"
-	?define PR_T_ONLY_READ "Read-only"
-	?define SET_BYTE_LANG "byte"
-#endif
 
-char path_to_file[4096];
-char file_name2[4096];
+char path_to_file[PATHLEN];
+char file_name2[PATHLEN];
 edit_box file_name_ed = {230,59,32,0xffffff,0x94AECE,0xFFFfff,0xffffff,0x10000000,sizeof(file_name2)-2,#file_name2,NULL, 0b,2,2};
 edit_box path_to_file_ed = {160,120,79,0xffffff,0x94AECE,0xFFFfff,0xffffff,2,sizeof(path_to_file)-2,#path_to_file,NULL, 0b,2,2};
 
 BDVK file_info_general;
 BDVK file_info_dirsize;
 
-bool quest_active;
+bool apply_question_active;
 
-_dir_size more_files_count;
+DIR_SIZE more_files_count;
+DIR_SIZE dir_size;
 
 checkbox ch_read_only = { PR_T_ONLY_READ, NULL };
 checkbox ch_hidden = { PR_T_HIDDEN, NULL };
@@ -68,15 +32,13 @@ void SetPropertiesDir(dword way)
 	dword cur_file;
 	if (dir_exists(way))
 	{
-		cur_file = malloc(4096);
+		cur_file = malloc(PATHLEN);
 		GetDir(#dirbuf, #fcount, way, DIRS_ONLYREAL);
 		for (i=0; i<fcount; i++)
 		{
 			filename = i*304+dirbuf+72;
-			strcpy(cur_file, way);
-			chrcat(cur_file, '/');
-			strcat(cur_file, filename);
-			if ( TestBit(ESDWORD[filename-40], 4) )
+			sprintf(cur_file, "%s/%s", way, filename);
+			if ( ESDWORD[filename-40] & ATR_FOLDER )
 			{
 				SetPropertiesDir(cur_file);
 			}
@@ -86,62 +48,57 @@ void SetPropertiesDir(dword way)
 	}
 }
 
-void SetProperties(byte prop)
+#define SET_PROPERTIES_SINGLE_FILE 0
+#define SET_PROPERTIES_NO_SUBFOLDER 1
+#define SET_PROPERTIES_ALL_SUBFOLDER 2
+void SetProperties(int mode)
 {
-	dword cur_file;
+	char pcur_file[4096];
 	dword i;
 
-	if (prop==1) || (prop==2)
+	apply_question_active = false;
+
+	if (SET_PROPERTIES_SINGLE_FILE == mode) {
+		SetPropertiesFile(#file_path, #file_info_general);
+	}
+
+	if (SET_PROPERTIES_ALL_SUBFOLDER == mode)
+	|| (SET_PROPERTIES_NO_SUBFOLDER == mode)
 	{
-		if (selected_count)
+		if (getSelectedCount())
 		{
-			cur_file = malloc(4096);
 			for (i=0; i<files.count; i++) 
 			{
 				if (getElementSelectedFlag(i) == true) 
 				{
-					strcpy(cur_file, #path);
-					strcat(cur_file, file_mas[i]*304+buf+72);
-					SetPropertiesDir(cur_file);
-					if (prop==2)
-					{
-						if (dir_exists(cur_file))
-						{
-							SetPropertiesDir(cur_file);
-						}
+					sprintf(#pcur_file,"%s/%s",path,items.get(i)*304+buf+72);
+					SetPropertiesFile(#pcur_file, #file_info_general);
+					if (SET_PROPERTIES_ALL_SUBFOLDER == mode) {
+						if (dir_exists(#pcur_file)) SetPropertiesDir(#pcur_file);
 					}
 				}
 			}
-			free(cur_file);
 		}
 		else
 		{
 			SetPropertiesFile(#file_path, #file_info_general);
-			if (prop==2) SetPropertiesDir(#file_path);
+			if (SET_PROPERTIES_ALL_SUBFOLDER == mode) SetPropertiesDir(#file_path);
 		}
-		quest_active = 0;
-		DrawPropertiesWindow();
 	}
-	else
-	{
-		SetPropertiesFile(#file_path, #file_info_general);
-	}
+
 	cmd_free=3;
-	_not_draw = true;
-	Open_Dir(#path,WITH_REDRAW);
-	_not_draw = false;
-	EventRedrawWindow(Form.left,Form.top);
+	OpenDir(ONLY_OPEN);
 	ExitProcess();
 }
 
 void ShowConfirmQuestionPopin()
 {
-	quest_active = 1;
-	DrawPopup(15,80,250,90,1,system.color.work, system.color.work_graph);
+	apply_question_active = true;
+	DrawPopup(15,80,250,90,1,sc.work, sc.line);
 	WriteText(35, 102, 0x90, 0x000000, QUEST_1);
 	WriteText(65, 117, 0x90, 0x000000, QUEST_2);
-	DrawStandartCaptButton(62,138,301,T_YES);
-	DrawStandartCaptButton(155,138,302,T_NO);
+	DrawStandartCaptButton(62,138,B_SETINGS_APPLY_SUBFOLDER,T_YES);
+	DrawStandartCaptButton(155,138,B_SETINGS_APPLY_NO_SUBFOLDER,T_NO);
 }
 
 void GetSizeMoreFiles(dword way)
@@ -153,8 +110,8 @@ void GetSizeMoreFiles(dword way)
 	{
 		if (getElementSelectedFlag(i) == true) 
 		{
-			sprintf(#cur_file,"%s/%s",way,file_mas[i]*304+buf+72);
-			if (TestBit(ESDWORD[file_mas[i]*304+buf+32], 4) )
+			sprintf(#cur_file,"%s/%s",way,items.get(i)*304+buf+72);
+			if (ESDWORD[items.get(i)*304+buf+32] & ATR_FOLDER )
 			{
 				more_files_count.calculate_loop(#cur_file);
 				more_files_count.folders++;
@@ -162,7 +119,8 @@ void GetSizeMoreFiles(dword way)
 			else
 			{
 				GetFileInfo(#cur_file, #file_info_dirsize);
-				more_files_count.bytes += file_info_dirsize.sizelo;
+				more_files_count.sizelo += file_info_dirsize.sizelo;
+				more_files_count.sizehi += file_info_dirsize.sizehi;
 				more_files_count.files++;
 			}
 		}
@@ -173,10 +131,10 @@ void properties_dialog()
 {
 	int id;
 	
-	if (selected_count)
+	if (getSelectedCount())
 	{
 		more_files_count.get(NULL);
-		GetSizeMoreFiles(#path);
+		GetSizeMoreFiles(path);
 		ch_read_only.checked = 0;
 		ch_hidden.checked = 0;
 		ch_system.checked = 0;
@@ -184,15 +142,13 @@ void properties_dialog()
 	else
 	{
 		GetFileInfo(#file_path, #file_info_general);
-		strcpy(#file_name2, #file_name);
-		EditBox_UpdateText(#file_name_ed, 0);
+		edit_box_set_text stdcall (#file_name_ed, #file_name);
 		if(itdir) dir_size.get(#file_path);
 		ch_read_only.checked = file_info_general.readonly;
 		ch_hidden.checked = file_info_general.hidden;
 		ch_system.checked = file_info_general.system;
 	}
-	strcpy(#path_to_file, #path);
-	path_to_file_ed.size = strlen(#path_to_file);
+	edit_box_set_text stdcall (#path_to_file_ed, path);
 	
 	SetEventMask(EVM_REDRAW + EVM_KEY + EVM_BUTTON + EVM_MOUSE + EVM_MOUSE_FILTER);
 	loop() switch(WaitEvent())
@@ -202,30 +158,20 @@ void properties_dialog()
 				ch_read_only.click(id);
 				ch_hidden.click(id);
 				ch_system.click(id);
-				if (quest_active)
+				if (apply_question_active)
 				{
-					IF (id==301) SetProperties(2);
-					IF (id==302) SetProperties(1);
-					quest_active=false;
+					IF (id==B_SETINGS_APPLY_SUBFOLDER) 
+						SetProperties(SET_PROPERTIES_ALL_SUBFOLDER);
+					IF (id==B_SETINGS_APPLY_NO_SUBFOLDER) 
+						SetProperties(SET_PROPERTIES_NO_SUBFOLDER);
 					break;
 				}
-				if (id==1) || (id==10)
+				if (id==1) || (id==B_CLOSE)
 				{
 					cmd_free=3;
 					ExitProcess();
 				}
-				IF (id==11) 
-				{
-					if (selected_count) || (itdir)
-					{
-						ShowConfirmQuestionPopin();
-					}
-					else 
-					{
-						SetProperties(0);
-					}
-					break;
-				}
+				if (id==B_APPLY) goto _APPLY_PROPERTIES;
 				break;
 				
 		case evMouse:
@@ -235,33 +181,39 @@ void properties_dialog()
 			
 		case evKey:
 				GetKeys();
-				
-				if (quest_active)
+
+				if (apply_question_active)
 				{
-					IF (key_scancode==SCAN_CODE_ENTER) SetProperties(2);
-					IF (key_scancode==SCAN_CODE_ESC) SetProperties(1);
-					quest_active=false;
+					IF (key_scancode==SCAN_CODE_ENTER) 
+						SetProperties(SET_PROPERTIES_ALL_SUBFOLDER);
+					IF (key_scancode==SCAN_CODE_ESC) 
+						SetProperties(SET_PROPERTIES_NO_SUBFOLDER);
 					break;
 				}
-				if (key_scancode==SCAN_CODE_ESC)
+
+				switch(key_scancode)
 				{
-					cmd_free=3;
-					ExitProcess();
+					case SCAN_CODE_ESC:
+						cmd_free=3;
+						ExitProcess();
+						break;
+
+					case SCAN_CODE_ENTER:
+						_APPLY_PROPERTIES:
+						if (getSelectedCount()) || (itdir) {
+							ShowConfirmQuestionPopin();
+						} else {
+							SetProperties(SET_PROPERTIES_SINGLE_FILE);
+						}
+						break;
+
+					case SCAN_CODE_KEY_A:
+					case SCAN_CODE_KEY_C:
+						if (key_modifier & KEY_LCTRL) || (key_modifier & KEY_RCTRL) { 
+							edit_box_key_c stdcall(#file_name_ed,key_editbox);
+							edit_box_key_c stdcall(#path_to_file_ed,key_editbox);
+						}
 				}
-				if (key_scancode==SCAN_CODE_ENTER)
-				{
-					if (selected_count) || (itdir)
-					{
-						ShowConfirmQuestionPopin();
-					}
-					else 
-					{
-						SetProperties(0);
-					}
-					break;
-				}
-				edit_box_key stdcall(#file_name_ed);
-				edit_box_key stdcall(#path_to_file_ed);
 				break;
 				
 		case evReDraw:
@@ -271,71 +223,72 @@ void properties_dialog()
 
 void DrawPropertiesWindow()
 {
-	proc_info settings_form;
-	char element_size_label[32];
-	char folder_info[200];
+	proc_info pform;
 	dword ext1;
-	dword element_size;
 	incn y;
-	char temp_path[sizeof(file_path)];
-	DefineAndDrawWindow(Form.left + 150,150,315,360+skin_height,0x34,system.color.work,WINDOW_TITLE_PROPERTIES,0);
-	GetProcessInfo(#settings_form, SelfInfo);
+	char temp_path[PATHLEN];
+	bool show_date = false;
 
-	DrawStandartCaptButton(settings_form.cwidth - 96, settings_form.cheight-34, 10, BTN_CLOSE);
-	DrawStandartCaptButton(settings_form.cwidth -208, settings_form.cheight-34, 11, BTN_APPLY);
-	
-	WriteText(10, 78, 0x90, system.color.work_text, PR_T_DEST);
-	edit_box_draw stdcall (#path_to_file_ed);
+	dword p_t_formated_size;
+	dword p_q_size_bytes;
+	dword t_contains_files_and_folders[200];
 
-	WriteText(10, 97, 0x90, system.color.work_text, PR_T_SIZE);
+	if (chrnum(path, '/')>1) || (streq(path, "/kolibrios")) || (streq(path, "/sys")) show_date = true;
+	if (getSelectedCount()) show_date = false;
+
+	DefineAndDrawWindow(Form.left + 150,150,315,show_date*60+342+skin_h,0x34,sc.work,WINDOW_TITLE_PROPERTIES,0);
+	GetProcessInfo(#pform, SelfInfo);
+
+	DrawStandartCaptButton(pform.cwidth - 96, pform.cheight-34, B_CLOSE, T_CLOSE);
+	DrawStandartCaptButton(pform.cwidth -208, pform.cheight-34, B_APPLY, T_APPLY);
 	
-	if (selected_count)
+	if (getSelectedCount())
 	{
 		PropertiesDrawIcon(NULL, "<lot>");
-		sprintf(#folder_info,"%s%d%s%d",SET_6,more_files_count.files,SET_7,more_files_count.folders);
-		WriteText(file_name_ed.left+4, 30, 0x90, system.color.work_text, #folder_info);
-		sprintf(#element_size_label,"%s (%d %s)",ConvertSize64(more_files_count.bytes, NULL),more_files_count.bytes,SET_BYTE_LANG);
-		WriteText(120, 97, 0x90, system.color.work_text, #element_size_label);
-	}
-	else
-	{
-		if ( file_info_general.isfolder )
-				PropertiesDrawIcon(NULL, "<DIR>");
-		else {
-			sprintf(#temp_path,"%s/%s",#path,#file_name2);
-			ext1 = strrchr(#file_name2,'.');
-			if (ext1) ext1 += #file_name2;
-			PropertiesDrawIcon(#temp_path, ext1);
-		}
-		WriteText(file_name_ed.left, file_name_ed.top-15, 0x80, system.color.work_text, PR_T_NAME);
+		WriteText(file_name_ed.left+4, 30, 0x90, sc.work_text, T_BULK_SELECTION);
+		p_t_formated_size = ConvertSize64(more_files_count.sizelo, more_files_count.sizehi);
+		p_q_size_bytes = #more_files_count.sizelo;
+		sprintf(#t_contains_files_and_folders,T_FILES_FOLDERS,more_files_count.files,more_files_count.folders);
+	} else {
+		WriteText(file_name_ed.left, file_name_ed.top-15, 0x80, sc.work_text, T_NAME);
 		DrawEditBox(#file_name_ed);
-		
-		if (!itdir) element_size = file_info_general.sizelo;
-		else
-		{
-			WriteText(10,116, 0x90, system.color.work_text, PR_T_CONTAINS);                              
-			sprintf(#folder_info,"%s%d%s%d",SET_6,dir_size.files,SET_7,dir_size.folders);
-			WriteText(120, 116, 0x90, system.color.work_text, #folder_info);
-			element_size = dir_size.bytes;
-		}
-		WriteTextLines(10,  136, 0x90, system.color.work_text, CREATED_OPENED_MODIFIED, 20);
-		DrawDate(120,  136, system.color.work_text, #file_info_general.datecreate);
-		DrawDate(120, 156, system.color.work_text, #file_info_general.datelastaccess);
-		DrawDate(120, 176, system.color.work_text, #file_info_general.datelastedit);
-
-		sprintf(#element_size_label,"%s (%d %s)",ConvertSize64(element_size, NULL),element_size,SET_BYTE_LANG);
-		WriteText(120, 99, 0x90, system.color.work_text, #element_size_label);
+		if (itdir) {
+			PropertiesDrawIcon(NULL, "<DIR>");
+			p_t_formated_size = ConvertSize64(dir_size.sizelo, dir_size.sizehi);
+			p_q_size_bytes = #dir_size.sizelo;
+			sprintf(#t_contains_files_and_folders,T_FILES_FOLDERS,dir_size.files,dir_size.folders);
+		} else {
+			sprintf(#temp_path,"%s/%s",path,#file_name2);
+			if (ext1 = strrchr(#file_name2,'.')) ext1 += #file_name2;
+			PropertiesDrawIcon(#temp_path, ext1);
+			p_t_formated_size = ConvertSize64(file_info_general.sizelo, file_info_general.sizehi);
+			p_q_size_bytes = #file_info_general.sizelo;
+			sprintf(#t_contains_files_and_folders,T_DATA);
+		}	
 	}
-	DrawFrame(10, 212, -10*2 + settings_form.cwidth - 2, 92, FLAGS);
-	y.n = 212; //212 => attributes_frame.y
+	WriteTextLines(10, y.set(78), 0x90, sc.work_text, T_PATH_SIZE, 20);
+	edit_box_draw stdcall (#path_to_file_ed);
+
+	WriteText(120, y.inc(20), 0x90, sc.work_text, p_t_formated_size);
+	WriteNumber(120, y.inc(20), 0x90, sc.work_text, 0xc0140001, p_q_size_bytes);
+	WriteText(120, y.inc(20), 0x90, sc.work_text, #t_contains_files_and_folders);
+
+	if (show_date) {
+		WriteTextLines(10, y.inc(32), 0x90, sc.work_text, CREATED_OPENED_MODIFIED, 20);
+		DrawDateTime(120, y.n, sc.work_text, #file_info_general.datecreate, #file_info_general.timecreate);
+		DrawDateTime(120, y.inc(20), sc.work_text, #file_info_general.datelastaccess, #file_info_general.timelastaccess);
+		DrawDateTime(120, y.inc(20), sc.work_text, #file_info_general.datelastedit, #file_info_general.timelastedit);			
+	}
+
+	DrawFrame(10, y.set(pform.cheight - 143), -10*2 + pform.cwidth - 2, 92, FLAGS);
 	ch_read_only.draw(24, y.inc(18));
 	ch_hidden.draw(24, y.inc(24));
 	ch_system.draw(24, y.inc(24));
+	if (apply_question_active) ShowConfirmQuestionPopin();
 }
 
 void PropertiesDrawIcon(dword file_path, extension)
 {
-	#define ICON_PADDING 11
-	DrawBar(20-ICON_PADDING, 30-ICON_PADDING-1, ICON_PADDING*2+16, ICON_PADDING*2+16, 0xFFFfff);
-	DrawIconByExtension(file_path, extension, -icon_size/2+28, -icon_size/2+38, 0xFFFfff);
+	int icon_n = ini_icons.get(file_path, extension, 32);
+	draw_icon_32(12, 22, sc.work, icon_n);
 }

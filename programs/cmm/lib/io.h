@@ -28,14 +28,14 @@
 #endif
 
 #ifdef LANG_RUS
-	#define __T__GB "É°"
-	#define __T__MB "å°"
-	#define __T__KB "ä°"
+	#define __T__GB "ÉÅ"
+	#define __T__MB "åÅ"
+	#define __T__KB "äÅ"
 	#define __T___B "Å"
 #else
-	#define __T__GB "Gb"
-	#define __T__MB "Mb"
-	#define __T__KB "Kb"
+	#define __T__GB "GB"
+	#define __T__MB "MB"
+	#define __T__KB "KB"
 	#define __T___B "B"
 #endif
 
@@ -154,15 +154,15 @@
 	$mov ebx,#__file_F70.func
 	$int 0x40
 }
-:int __FILE::write(dword write_file_size, write_buffer, write_file_path)
+:int __FILE::write(dword write_offset, write_len, write_buffer, wfile_path)
 {
 	__file_F70.func = 2;
-	__file_F70.param1 = 0;
+	__file_F70.param1 = write_offset;
 	__file_F70.param2 = 0;
-	__file_F70.param3 = write_file_size;
+	__file_F70.param3 = write_len;
 	__file_F70.param4 = write_buffer;
 	__file_F70.rezerv = 0;
-	__file_F70.name = io.path.path(write_file_path);
+	__file_F70.name = io.path.path(wfile_path);
 	$mov eax,70
 	$mov ebx,#__file_F70.func
 	$int 0x40
@@ -216,6 +216,28 @@
 	return NULL;
 }
 
+:void get_path_name(dword BUF,PATH)
+{
+	dword beg = PATH;
+	dword pos = PATH;
+	dword sav = PATH;
+	dword i;
+	while(DSBYTE[pos])
+	{
+		if(DSBYTE[pos]=='/')sav = pos;
+		pos++;
+	}
+	i = sav-beg;
+	while(i)
+	{
+		DSBYTE[BUF] = DSBYTE[beg];
+		beg++;
+		BUF++;
+		i--;
+	}
+	DSBYTE[BUF] = 0;
+}
+
 :struct __PATH
 {
 	dword file(...);
@@ -225,14 +247,20 @@
 :char __PATH_NEW[4096];
 :dword __PATH::path(dword PATH)
 {
+	char self_dir[4096];
 	dword pos;
-	if(!PATH) return self.dir;
+	
+	get_path_name(#self_dir,I_Path);
+
+	if(!PATH) return #self_dir;
 	pos = PATH;
 	if(DSBYTE[pos]=='/') || (!strncmp(PATH,"./",2))
 	{
 		return PATH;
 	}
-	sprintf(#__PATH_NEW,"%s/%s",self.dir,PATH);
+	strcpy(#__PATH_NEW, #self_dir);
+	chrcat(#__PATH_NEW, '/');
+	strcpy(#__PATH_NEW, PATH);
 	return #__PATH_NEW;
 }
 
@@ -298,7 +326,7 @@
 }	
 :int IO::write(dword PATH,data)
 {
-	file.write(0,strlen(data),data,PATH);
+	return file.write(0,strlen(data),data,PATH);
 }
 :char BYTE_HEAD_FILE_KPCK[4];
 :dword IO::read(dword PATH)
@@ -327,6 +355,7 @@
     $mov eax,70
     $mov ebx,#__file_F70.func
     $int 0x40
+    return EAX;
 }
 :signed IO::count(dword PATH)
 {
@@ -363,7 +392,7 @@
 			if(tmp==-1)return -1;
 			size_tmp += tmp;
 			i++;
-			if (TestBit(ESDWORD[filename-40], 4))count_dirs++;
+			if (ESDWORD[filename-40] & ATR_FOLDER)count_dirs++;
 			else count_files++;
 		}
 		

@@ -1,7 +1,7 @@
 ; Calendar for KolibriOS
 ;
 ; v1.5 - time redesign by Heavyiron
-; v1.2 - v1.55 - new desighn and functionality by Leency
+; v1.2 - v1.55 - new design and functionality by Leency
 ; v1.1 - add change time support by DedOK 
 ; v1.0 - written in pure assembler by Ivushkin Andrey aka Willow
 ; also - diamond, spraid, fedesco
@@ -84,7 +84,7 @@ macro DrawRect color1,color2,color3,color4 ; pizdec... but optimized well
 	add ebx,1 shl 16
 	add ecx,1 shl 16
 	mov bx,DATE_BUTTON_WIDTH-4
-	mov cx,DATE_BUTTON_HEIGHT-4
+	mov cx,DATE_BUTTON_HEIGHT-3
 	mcall
 	; bottom border-inner
 	mov edx,color4
@@ -140,31 +140,43 @@ str2int:
     add  al,bl
     ret
 
-START:
+get_current_date:
     mcall 29
     mov  [datestr],eax
     mov  esi,datestr
     call str2int
     add  eax,1900
-    mov  [Year],eax
+    mov  [curYear],eax
     call str2int
     dec  eax
-    mov  [Month],eax
+    mov  [curMonth],eax
     call str2int
-    mov  [day_sel],eax
+    mov  [curDay],eax
     test byte[esi],0
     jnz  .no2000
-    add  [Year],100
-	mov eax,[Year]
-	mov [curYear], eax
-	mov eax,[Month]
-	mov [curMonth], eax
-	mov eax,[day_sel]
-	mov [curDay], eax
+    add  [curYear],100
   .no2000:
-    jmp  upd
-red:
+ret
 
+check_midnight:
+    mov   ebx,[datestr]
+    mcall 29
+	cmp   eax,ebx
+	je   end_check_midnight
+	  call get_current_date
+	  call draw_days
+    end_check_midnight:
+ret
+
+;===============================================================
+
+START:
+    call get_current_date
+	m2m [Year], [curYear]
+	m2m [Month], [curMonth]
+	m2m [day_sel], [curDay]
+    call calculate
+red:
     call define_window
 
 still:
@@ -179,6 +191,7 @@ still:
     cmp  eax,3
     je	 button
 
+    call check_midnight
     call draw_clock
 
     jmp  still
@@ -387,70 +400,65 @@ day_bounds db -1,0,7,0,-7,0,1,0 ; left,down,up,right
     xor  [new_style],1
     jmp  upd
 
+update_clock:
+    mcall 22,0x00000000 
+    call draw_clock	
+    jmp  still
 
 reset:
     mcall 3
     mov  ecx,eax
     shl  ecx,16
     shr  ecx,16
-    mcall 22,0x00000000 
-    jmp  still
+    jmp  update_clock
 
 plus_hd:
     mcall 3
     mov  ecx,eax
     add  ecx,1
-    mcall 22,0x00000000 
-    jmp  still
+    jmp  update_clock
 
 plus_he:
     mcall 3
     mov  ecx,eax
     add  ecx,16
-    mcall 22,0x00000000 
-    jmp  still
+    jmp  update_clock
 
 minus_hd:
     mcall 3
     mov  ecx,eax
     sub  ecx,1
-	mcall 22,0x00000000
-    jmp  still
+    jmp  update_clock
 
 minus_he:
     mcall 3
     mov  ecx,eax
     sub  ecx,16
-	mcall 22,0x00000000 
-    jmp  still
+    jmp  update_clock
 
 plus_md:
     mcall 3
     mov  ecx,eax
     add  ecx,256
-	mcall 22,0x00000000 
-    jmp  still
+    jmp  update_clock
 
 plus_me:
     mcall 3
     mov  ecx,eax
     add  ecx,4096
-    mcall 22,0x00000000 
-    jmp  still
+    jmp  update_clock
 
 minus_md:
     mcall 3
     mov  ecx,eax
     sub  ecx,256
-    mcall 22,0x00000000
-    jmp  still
+    jmp  update_clock
 
 minus_me:
     mcall 3
     mov  ecx,eax
     sub  ecx,4096
-    mcall 22,0x00000000
-    jmp  still
+    jmp  update_clock
 
 set_date:
     mov  eax,0x00000000

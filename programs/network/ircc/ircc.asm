@@ -1,6 +1,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                                 ;;
-;; Copyright (C) KolibriOS team 2004-2018. All rights reserved.    ;;
+;; Copyright (C) KolibriOS team 2004-2021. All rights reserved.    ;;
 ;; Distributed under terms of the GNU General Public License       ;;
 ;;                                                                 ;;
 ;;  IRC client for KolibriOS                                       ;;
@@ -13,7 +13,7 @@
 ;;                                                                 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-version equ '0.31'
+version equ '0.34'
 
 ; connection status
 STATUS_DISCONNECTED     = 0
@@ -185,25 +185,6 @@ START:
         test    eax, eax
         jz      exit
         mov     [ebx + window.type], WINDOWTYPE_SERVER
-
-; get system colors
-        mcall   48, 3, colors, 40
-
-; set edit box and scrollbar colors
-        mov     eax, [colors.work]
-        mov     [scroll1.bg_color], eax
-        mov     [scroll2.bg_color], eax
-
-        mov     eax, [colors.work_button]
-        mov     [scroll1.front_color], eax
-        mov     [scroll2.front_color], eax
-
-        mov     eax, [colors.work_text]
-        mov     [scroll1.line_color], eax
-        mov     [scroll2.line_color], eax
-
-        mov     [scroll1.type], 1               ; 0 = simple, 1 = skinned
-        mov     [scroll2.type], 1
 
 ; get settings from ini
         invoke  ini.get_str, path, str_user, str_nick, user_nick, MAX_NICK_LEN, default_nick
@@ -559,6 +540,8 @@ default_nick            db 'kolibri_user', 0
 default_real            db 'Kolibri User', 0
 default_quit            db 'KolibriOS forever', 0
 
+closing_cross           db 'x',0
+
 irc_colors              dd 0xffffff     ;  0 white
                         dd 0x000000     ;  1 black
                         dd 0x00007f     ;  2 blue (navy)
@@ -606,7 +589,7 @@ import  libini,\
         ini.get_int,    'ini_get_int'
 
 import  boxlib,\
-        edit_box_draw,  'edit_box',\
+        edit_box_draw,  'edit_box_draw',\
         edit_box_key,   'edit_box_key',\
         edit_box_mouse, 'edit_box_mouse',\
         scrollbar_draw, 'scrollbar_v_draw',\
@@ -618,7 +601,7 @@ edit1   edit_box  0, 0, 0, 0xffffff, 0x6f9480, 0, 0, 0x000000, USERCMD_MAX_SIZE,
 scroll1 scrollbar SCROLLBAR_WIDTH, 0, 0, TOP_Y, SCROLLBAR_WIDTH, 0, 0, 0, 0, 0, 0, 1
 scroll2 scrollbar SCROLLBAR_WIDTH, 0, 0, TOP_Y, SCROLLBAR_WIDTH, 0, 0, 0, 0, 0, 0, 1
 
-input_text      db '/server chat.freenode.net', 0
+input_text      db '/server irc.libera.chat', 0
                 rb MAX_COMMAND_LEN
 
 I_END:

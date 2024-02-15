@@ -58,6 +58,10 @@ static void display_info(TCCState *s, int what)
         " Windows"
 #elif defined TCC_TARGET_MEOS
 		" KolibriOS"
+#ifdef TCC_TARGET_KX
+    "/KX extension"
+			//TCC_KX_VERSION_INFO
+#endif
 #else
         " Linux"
 #endif
@@ -128,6 +132,10 @@ static void help(void)
            "  -Bdir       use 'dir' as tcc internal library and include path\n"
            "  -MD         generate target dependencies for make\n"
            "  -MF depfile put generated dependencies here\n"
+#if defined(TCC_TARGET_MEOS) && !defined (TCC_TARGET_KX)
+           "For KolibriOS only:\n"
+           "  -nobss      do not emit BSS section into file\n"
+#endif
            );
 }
 
@@ -323,7 +331,7 @@ int main(int argc, char **argv)
             if (tcc_add_file(s, filename, filetype) < 0)
                 ret = 1;
             else
-            if (s->output_type == TCC_OUTPUT_OBJ) {
+            if (s->output_type == TCC_OUTPUT_OBJ && !s->option_r) {
                 ret = !!tcc_output_file(s, s->outfile);
                 if (s->gen_deps && !ret)
                     gen_makedeps(s, s->outfile, s->deps_outfile);
@@ -352,7 +360,8 @@ int main(int argc, char **argv)
 #endif
         } else
         if (s->output_type == TCC_OUTPUT_EXE ||
-            s->output_type == TCC_OUTPUT_DLL)
+            s->output_type == TCC_OUTPUT_DLL ||
+            (s->output_type == TCC_OUTPUT_OBJ && s->option_r))
         {
             ret = !!tcc_output_file(s, s->outfile);
             if (s->gen_deps && !ret)

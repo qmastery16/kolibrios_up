@@ -18,30 +18,38 @@
 ;   MAIN MENU by lisovin@26.ru
 ;   Some parts of code rewritten by Ivan Poddubny <ivan-yar@bk.ru>
 ;
-;   Compile with FASM for Menuet
+;   Compile with FASM for Kolibri
 ;******************************************************************************
-  BTN_HEIGHT  = 22
-  TXT_Y       = (BTN_HEIGHT)/2-4
+  BTN_HEIGHT         = 26
+  BTN_WIDTH          = 198 ; 178 for a small font
+  TXT_Y              = (BTN_HEIGHT)/2-7
+  FONT_TYPE          = 0x90000000
 
-  PANEL_HEIGHT	= 20
-  MENU_BOTTON_X_POS	= 10
-  MENU_BOTTON_X_SIZE	= 50
+  PANEL_HEIGHT       = 20
+  MENU_BOTTON_X_POS  = 10
+  MENU_BOTTON_X_SIZE = 50
 ;------------------------------------------------------------------------------
 	use32
 	org 0x0
 
-	db 'MENUET01'	; 8 byte id
-	dd 0x01		; header version
-	dd START	; start of code
-	dd IM_END	; size of image
-	dd mem_end	; memory for app
-	dd stack_area	; esp
-	dd bootparam	; boot parameters
-	dd 0x0		; path
+	db 'MENUET01'  ; 8 byte id
+	dd 0x01        ; header version
+	dd START       ; start of code
+	dd IM_END      ; size of image
+	dd mem_end     ; memory for app
+	dd stack_area  ; esp
+	dd bootparam   ; boot parameters
+	dd 0x0         ; path
 ;------------------------------------------------------------------------------
-include "lang.inc"
 include "..\..\..\macros.inc"
-;include "../../../debug.inc"             ; debug macros
+include "..\..\..\gui_patterns.inc"
+; Formatted debug output:
+include "..\..\..\debug-fdo.inc"
+__DEBUG__       = 1             ; 0 - disable debug output / 1 - enable debug output
+__DEBUG_LEVEL__ = DBG_ERR      ; set the debug level
+DBG_ALL       = 0  ; all messages
+DBG_INFO      = 1  ; info and errors
+DBG_ERR       = 2  ; only errors
 ;------------------------------------------------------------------------------
 align 4
 conversion_ASCII_to_HEX:
@@ -75,6 +83,10 @@ align 4
 align 4
 START:		       ; start of execution
 	mcall	68,11
+	
+	mcall 30, 1, default_dir
+
+	; DEBUGF DBG_INFO, "MENU START! sc.work = %x\n", [sc.work]
 
 	mov	esi,bootparam	
 	cmp	[esi],byte 0
@@ -140,6 +152,89 @@ align 4
 	mov	[screen_size],eax
 	
 	mcall	48,3,sc,sizeof.system_colors	; load system colors
+
+	; DEBUGF  DBG_INFO, "sc.work = %x\n", [sc.work]
+
+	mov esi, [sc.work]
+	add esi, 0x1a1a1a
+	mov ebx, esi
+	and ebx, 0xFF000000
+	test ebx, ebx
+	jz @f
+	mov esi, 0x00FFFFFF
+@@:
+	mov [active_color], esi
+
+	mov  esi, [sc.work]
+	cmp  esi, 0xdfdfdf
+	jb   @f
+	sub  esi, 0x1b1b1b
+@@:
+	mov [work_color], esi
+
+	mov eax, 68
+	mov ebx, 22
+	mov ecx, icons_resname
+	mov esi, 0 ; SHM_READ
+	mcall
+	test eax, eax
+	jnz @f
+	mov [no_shared_resources], 1
+	DEBUGF DBG_ERR, "Failed to get ICONS18W from @RESHARE.\nTry rerun @RESHARE.\n"
+	jmp .no_res
+@@:
+	mov [shared_icons_size], edx
+	; copy shared icons
+	mov esi, eax
+	mov ecx, edx
+	mcall 68, 12, edx
+	mov edi, eax
+	mov [shared_icons_ptr], eax
+	shr ecx, 2 ; /= 4; ecx = how many dwords in shared icons
+	cld
+	rep movsd
+
+	; copy shared icons to active icons
+	mov esi, [shared_icons_ptr]
+	mov ecx, edx
+	mcall 68, 12, edx
+	mov edi, eax
+	mov [shared_icons_active_ptr], eax
+	shr ecx, 2 ; /= 4; ecx = how many dwords in shared icons
+	cld
+	rep movsd
+
+	; fix colors:
+	mov esi, [shared_icons_active_ptr]
+	mov edi, [shared_icons_ptr]
+	xor ecx, ecx
+.for1:
+	cmp ecx, [shared_icons_size]
+	jae .end_for1
+
+	mov eax, esi
+	add eax, ecx
+	mov edx, [eax]
+	cmp edx, [sc.work]
+	; DEBUGF DBG_INFO, "eax = %x, sc.work = %x\n", eax, [sc.work]
+	jne @f
+	mov ebx, [active_color]
+	mov [eax], ebx
+@@:
+
+	mov eax, edi
+	add eax, ecx
+	mov edx, [eax]
+	cmp edx, [sc.work]
+	jne @f
+	mov ebx, [work_color]
+	mov [eax], ebx
+@@:
+
+	add ecx, 4
+	jmp .for1
+.end_for1:
+.no_res:
 	
 ; get size of file MENU.DAT
 	mcall	70,fileinfo
@@ -164,13 +259,13 @@ align 4
 	mov	edi,[fileinfo.return]	;mem_end
 ;--------------------------------------
 align 4
-newsearch:
+newsearch: ; search for next submenu in MENU.DAT
 	mov	al,'#'
 	cld
 	repne	scasb
 	test	ecx,ecx	   ; if not found
 	jz	close
-	call	get_number
+	call	get_number ; get submenu number from char at edi position to ebx
 	test	ebx,ebx
 	jnz	.number
 	cmp	al,'#'
@@ -178,9 +273,9 @@ newsearch:
 ;--------------------------------------
 align 4
 .number:
-	shl	ebx,4
+	shl	ebx,4 ; *= 16 . 16 is size of process table (see virtual at 0 ... stuff in the end of file)
 	add	ebx,[menu_data]     ; pointer to process table
-	mov	[ebx],edi
+	mov	[ebx],edi ; process_table->pointer = edi
 	inc	[processes]
 	jmp	newsearch
 ;--------------------------------------
@@ -242,7 +337,8 @@ align 4
 	mov	[buffer],0
 ;------------------------------------------------------------------------------
 align 4
-thread:
+thread: ; starts new thread. called when opening each menu
+	DEBUGF DBG_INFO, "start new THREAD\n"
 	mov	ebp,esp
 	sub	ebp,0x1000
 	cmp	ebp,0x2000 ; if this is first started thread
@@ -262,7 +358,7 @@ red:
 	call	draw_window	; redraw
 ;------------------------------------------------------------------------------
 align 4
-still:
+still: ; event loop
 	call	free_area_if_set_mutex
 
 	mcall	23,5	; wait here for event
@@ -366,21 +462,22 @@ button1:
 ; dph eax
 	call	draw_only_needed_buttons
 	popad
-; look for the next line <ah> times; <ah> = button_id
+; look (.next_string) for the next line in MENU.DAT <ah> times; <ah> = button_id
 	push	eax
 ;--------------------------------------
 align 4
 .next_string:
+	; DEBUGF DBG_INFO, ".next_string called\n"
 	call	searchstartstring
 	dec	ah
 	jnz	.next_string
 	pop	eax
 	
 	mov	ecx,40
-	mov	al,'/'
+	mov	al,'|'
 	cld
 	repne	scasb
-	test	ecx,ecx	  ; if '/' not found
+	test	ecx,ecx	  ; if '|' not found
 	je	searchexit
 	
 	cmp	[edi],byte '@'     ; check for submenu
@@ -389,7 +486,7 @@ align 4
 	cmp	[last_key],179
 	je	searchexit
 	
-	dec	edi
+	;dec	edi
 	push	edi			; pointer to start of filename
 	call	searchstartstring	; search for next string
 	sub	edi,2		; to last byte of string
@@ -402,9 +499,15 @@ align 4
 	rep	movsb		   ; copy string
 	mov	[edi],byte 0	       ; store terminator
 	mcall	70,fileinfo_start	; start program
-	or	[close_now],1      ; set close flag
 	pop	edi
+	or	[close_now],1      ; set close flag
 	mov	[mousemask],0
+	; if program run failed then start /sys/@open with param
+	test	eax,eax
+	jns	close
+	mov	eax, fileinfo_start.name
+	mov [file_open.params], eax
+	mcall	70,file_open	
 	jmp	close
 ;--------------------------------------
 align 4
@@ -434,7 +537,7 @@ runthread:
 	
 	mov	[esi + child],al    ; this is my child
 	mov	cx,[esi + x_start]
-	add	cx,141	  ; new x_start in cx
+	add	cx,BTN_WIDTH+1	  ; new x_start in cx
 	movzx	edx,al
 	shl	edx,4
 	add	edx,[menu_data]       ; edx points to child's base address
@@ -442,6 +545,15 @@ runthread:
 	mov	cx,[esi + y_end]   ; y_end in cx
 	mov	bl,[esi + rows]    ; number of buttons in bl
 	sub	bl,ah	  ; number of btn from bottom
+
+	; Leency: store vars for case when attachement=top 
+	pusha
+	mov [prior_thread_selected_y_end], bl
+	mcall	9,procinfo,-1
+	m2m     [prior_thread_y], dword[procinfo+38]
+	m2m     [prior_thread_h], dword[procinfo+46]
+	popa
+
 	movzx	eax,al
 	mov	[buffer],eax		; thread id in buffer
 	movzx	ebx,bl
@@ -454,6 +566,7 @@ runthread:
 	mov	edi,esi
 	call	backconvert	      ; get number of this process (al)
 	mov	[edx + parent],al   ; store number of parent process
+
 	mov	al,[edx + rows]
 	mov	[edx + cur_sel],al  ; clear current selected element
 	mov	[edx + prev_sel],al ; clear previous selected element
@@ -475,7 +588,7 @@ mouse: 	      ; MOUSE EVENT HANDLER
 	jnz	click
 	mcall	37,1
 	ror	eax,16	  ; eax = [ Y | X ] relative to window
-	cmp	ax,140	   ; pointer in window?
+	cmp	ax,BTN_WIDTH	   ; pointer in window?
 	ja	noinwindow
 ; *** in window ***
 	shr	eax,16	  ; eax = [ 0 | Y ]
@@ -673,9 +786,10 @@ align 4
 	mov	eax,[menu_mame]
 	cmp	[ebx+10],eax
 	jne	@f
-	mov	ax,[menu_mame+4]
-	cmp	[ebx+14],ax
-	jne	@f
+	; temporary to fit into 3 IMG sectors
+	;mov	ax,[menu_mame+4]
+	;cmp	[ebx+14],ax
+	;jne	@f
 	cmp	ecx,[active_process]
 	je	@f
 ; dph ecx
@@ -700,7 +814,7 @@ align 4
 ;   *********************************************
 align 4
 draw_window:
-	mcall	48,5
+	mcall	48,5 ; get working area
 	mov	[x_working_area],eax
 	mov	[y_working_area],ebx
 
@@ -710,8 +824,31 @@ draw_window:
 	movzx	ecx,[edi + y_end]
 	cmp	[panel_attachment],byte 1
 	je	@f
-;	add	ecx,eax
-;	sub	ecx,BTN_HEIGHT
+	
+	
+	;cmp	ebp,0x000 ; if this is first started thread
+	;je .1            ; then show it at the very top
+	
+	push  ebx eax
+	; if attachement=top 
+	; then NEW_WIN_Y = PRIOR_WIN_Y + PRIOR_WIN_H - ITEM_H + 1 - SEL_ITEM_Y
+
+	mov ecx, [prior_thread_y]
+	add ecx, [prior_thread_h]
+	sub ecx, BTN_HEIGHT
+	inc ecx
+
+	xor eax, eax
+	mov al, [prior_thread_selected_y_end]
+	mov ebx, BTN_HEIGHT
+	mul ebx
+		
+	sub ecx, eax
+
+	mov	[edi + cur_sel],1 ;if attachement=top then set item=1 selected
+	
+	pop eax ebx
+
 	jmp	.1
 ;--------------------------------------
 align 4
@@ -722,10 +859,11 @@ align 4
 .1:
 	shl	ecx,16
 	add	ecx,eax	    ; ecx = [ Y_START | Y_SIZE ]
+	dec ecx
 
 	movzx	ebx,[edi + x_start]
 	shl	ebx,16
-	mov	bx,140	    ; ebx = [ X_START | X_SIZE ]
+	mov	bx,BTN_WIDTH	    ; ebx = [ X_START | X_SIZE ]
 	mov	edx,0x01000000       ; color of work area RRGGBB,8->color gl
 	mov	esi,edx	    ; unmovable window
 	
@@ -788,56 +926,131 @@ draw_one_button:
 ; receives number of button in dl
 	push	edx
 	mov	eax,8
-	mov	ebx,140
+	mov	ebx,BTN_WIDTH
 	movzx	ecx,dl
 	imul	ecx,BTN_HEIGHT
+	mov [draw_y], ecx
 	shl	ecx,16
 	add	ecx,BTN_HEIGHT
 ; edx = button identifier
-	mov	esi,[sc.work]
-	cmp	esi,0xdfdfdf
-	jb	nocorrect
-	sub	esi,0x1b1b1b
-;--------------------------------------
-align 4
-nocorrect: 
+	mov	esi, [work_color]
+
+	mov [is_icon_active], 0
 	inc	dl
 	cmp	[edi + cur_sel],dl
 	jne	.nohighlight
-	add	esi,0x1a1a1a
+	mov [is_icon_active], 1
+
+	mov	esi, [active_color]
 ;--------------------------------------
 align 4
 .nohighlight:
-	or	edx,0x20000000
+	or	edx,BT_NOFRAME + BT_HIDE
 				; dunkaist[
 	add	edx,0xd1ff00	; This makes first menu buttons differ
 				; from system close button with 0x000001 id
 				; dunkaist]
 	mcall
+	push edx 
+	
+	mov edx, esi
+	mcall 13 ; draw rect
+	
+	mcall , BTN_WIDTH,<[draw_y],1>,[sc.work_light]
+	add     ecx, BTN_HEIGHT-1
+	mcall , 1
+	inc     ecx
+	mcall , <BTN_WIDTH,1>, , [sc.work_dark]
+	add     [draw_y], BTN_HEIGHT-1
+	mcall , BTN_WIDTH,<[draw_y],1>
+	
+	pop edx
 	movzx	edx,dl
 	dec	dl
 	imul	ebx,edx,BTN_HEIGHT
-	add	ebx,(4 shl 16) + TXT_Y
+	add	ebx,((4 + 18) shl 16) + TXT_Y ; added + 18 (icon size)
 	movzx	ecx,dl
 	inc	ecx
 	mov	edx,[edi + pointer]
 ;--------------------------------------
 align 4
 .findline:
-	cmp	byte [edx],13
+	cmp	byte [edx],13 ; if \r encountered => line found
 	je	.linefound
-	inc	edx
+	inc	edx ; go to next char
 	jmp	.findline
 ;------------------------------------------------------------------------------
 align 4
 .linefound:
-	inc	edx
-	cmp	byte [edx],10
+	inc	edx ; go to next char after \r
+	cmp	byte [edx],10 ; if it is not \n then again findline
 	jne	.findline
-	dec	ecx
+	dec	ecx ; TODO what in ecx? button number?
 	jnz	.findline
 	
-	mcall	4,,[sc.work_text],,21
+	mov ecx, [sc.work_text]
+	add ecx, FONT_TYPE
+
+	push ecx esi edi ebp
+	push ebx ; preserve ebx, it stores coordinates
+	mov [tmp], edx
+	mov [has_icon], 1
+	xor ebx, ebx
+@@: ; parse icon number
+	inc	edx
+	mov	al,[edx]
+	; DEBUGF DBG_INFO, "(%u)\n", al
+	cmp	al, '0'
+	jb	@f
+	cmp	al, '9'
+	ja	@f
+	sub	al, '0'
+	imul	ebx,10
+	add	ebx,eax
+	jmp @b
+@@:
+	; DEBUGF DBG_INFO, "icon_number = %x al = %u\n", ebx, al
+	mov [icon_number], ebx
+	cmp al, ' '
+	je @f
+	; if no space after number then consider that number is a part of caption
+	mov edx, [tmp] ; restore edx
+	mov [has_icon], 0 ; no icon
+@@:
+	pop ebx
+
+	mcall	4,,,,21 ; draw menu element caption
+
+	cmp [no_shared_resources], 1
+	je @f
+	cmp [has_icon], 1
+	jne @f
+	; draw icon:
+	mov eax, ebx
+	shr eax, 16
+	sub eax, 18 ; 18 - icon width
+	movzx ebx, bx
+
+	sub ebx, 2
+	shl eax, 16
+	add eax, ebx
+	add eax, 1 shl 16
+	mov [tmp], eax
+	mov ebx, [icon_number]
+	imul ebx, 18*18*4
+
+	mov ecx, [shared_icons_ptr]
+	; DEBUGF DBG_INFO, "is_icon_active = %x\n", [is_icon_active]
+ 	cmp [is_icon_active], 1
+ 	jne .not_active_icon
+ 	mov ecx, [shared_icons_active_ptr]
+.not_active_icon:	
+	add ebx, ecx
+	mcall 65, ebx, <18,18>, [tmp], 32, 0, 0
+
+@@:
+	pop ebp edi esi ecx
+	
 	pop	edx
 	ret
 ;------------------------------------------------------------------------------
@@ -852,8 +1065,8 @@ searchstartstring:
 	ret
 ;------------------------------------------------------------------------------
 ;*** DATA AREA ****************************************************************
-menu_mame:
-	db '@MENU',0
+menu_mame:   db '@MENU',0
+default_dir: db '/sys',0
 
 align 4
 free_my_area_lock	dd 0
@@ -880,7 +1093,7 @@ fileinfo:
  .size		 dd 0		; bytes to read
  .return	 dd procinfo	; return data pointer
  .name:
-     db   '/SYS/SETTINGS/MENU.DAT',0   ; ASCIIZ dir & filename
+     db   'SETTINGS/MENU.DAT',0   ; ASCIIZ dir & filename
 ;--------------------------------------
 align 4
 fileinfo_start:
@@ -891,6 +1104,16 @@ fileinfo_start:
  .rezerved_1	dd 0x0	; nop
  .name:
    times 50 db ' '
+;--------------------------------------
+align 4
+file_open:
+ .subfunction	dd 7	; 7=START /SYS/@OPEN APP WITH PARAM
+ .flags		dd 0	; flags
+ .params	dd 0x0	; nop
+ .rezerved	dd 0x0	; nop
+ .rezerved_1	dd 0x0	; nop
+ .name:
+   db   '/SYS/@OPEN',0
 ;------------------------------------------------------------------------------
 IM_END:
 ;------------------------------------------------------------------------------
@@ -911,6 +1134,8 @@ screen_size:
 .y	dw ?
 .x	dw ?
 ;--------------------------------------
+draw_y dd ?
+;--------------------------------------
 x_working_area:
 .right:		dw ?
 .left:		dw ?
@@ -921,21 +1146,38 @@ y_working_area:
 sc system_colors
 ;--------------------------------------
 last_key	db ?
+prior_thread_y dd ?
+prior_thread_h dd ?
+prior_thread_selected_y_end db ?
 ;------------------------------------------------------------------------------
 align 4
-menu_data	dd ?
+menu_data   dd ?
 ;--------------------------------------
-virtual at 0	      ; PROCESSES TABLE (located at menu_data)
-  pointer	dd ?   ; +0    pointer in file
-  rows		db ?	; +4    numer of strings
-  x_start	dw ?   ; +5    x start
-  y_end		dw ?   ; +7    y end
-  child		db ?   ; +9    id of child menu
-  parent	db ?   ; +10   id of parent menu
-  cur_sel	db ?   ; +11   current selection
-  prev_sel	db ?   ; +12   previous selection
-  rb		16-$+1 ; [16 bytes per element]
+virtual     at 0       ; PROCESSES TABLE (located at menu_data)
+  pointer   dd ?   ; +0    pointer in file
+  rows      db ?   ; +4    numer of strings
+  x_start   dw ?   ; +5    x start
+  y_end     dw ?   ; +7    y end
+  child     db ?   ; +9    id of child menu
+  parent    db ?   ; +10   id of parent menu
+  cur_sel   db ?   ; +11   current selection
+  prev_sel  db ?   ; +12   previous selection
+  rb        16-$+1 ; [16 bytes per element]
 end virtual
+
+include_debug_strings ; for debug-fdo
+
+icons_resname db 'ICONS18W', 0
+shared_icons_ptr dd ?
+shared_icons_active_ptr dd ?
+shared_icons_size dd ?
+has_icon db ?
+icon_number dd ?
+is_icon_active dd ?
+no_shared_resources dd 0
+tmp dd ?
+active_color dd ?
+work_color dd ?
 ;------------------------------------------------------------------------------
 align 4
 bootparam:

@@ -1,11 +1,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                              ;;
-;; Copyright (C) KolibriOS team 2004-2015. All rights reserved. ;;
+;; Copyright (C) KolibriOS team 2004-2022. All rights reserved. ;;
 ;; Distributed under terms of the GNU General Public License    ;;
 ;;                                                              ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-$Revision: 7327 $
+$Revision: 9932 $
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                            ;;
@@ -15,7 +15,7 @@ $Revision: 7327 $
 
 align 32
 sysenter_entry:
-        ; Настраиваем стек
+        ; Setting up the stack
         mov     esp, [ss:tss._esp0]
         sti
         push    ebp                     ; save app esp + 4
@@ -33,7 +33,7 @@ sysenter_entry:
         call    unprotect_from_terminate
         popad
         ;------------------
-        xchg    ecx, [ss:esp]           ; в вершин стека - app ecx, ecx - app esp + 4
+        xchg    ecx, [ss:esp]           ; in the stack top - app ecx, ecx - app esp + 4
         sub     ecx, 4
         xchg    edx, [ecx]              ; edx - return point, & save original edx
         push    edx
@@ -117,7 +117,7 @@ iglobal
       dd sys_cachetodiskette     ; 16-FlushFloppyCache
       dd sys_getbutton           ; 17-GetButton
       dd sys_system              ; 18-System Services
-      dd paleholder              ; 19-reserved
+      dd undefined_syscall       ; 19-reserved
       dd sys_midi                ; 20-ResetMidi and OutputMidi
       dd sys_setup               ; 21-SetMidiBase,SetKeymap,SetShiftKeymap,.
       dd sys_settime             ; 22-setting date,time,clock and alarm-clock
@@ -141,7 +141,7 @@ iglobal
       dd set_app_param           ; 40-WantEvents
       dd undefined_syscall       ; 41- deprecated GetIrqOwner
       dd undefined_syscall       ; 42- deprecated ReadIrqData
-      dd sys_outport             ; 43-SendDeviceData
+      dd undefined_syscall       ; 43- deprecated SendDeviceData
       dd undefined_syscall       ; 44- deprecated ProgramIrqs
       dd undefined_syscall       ; 45- deprecated ReserveIrq and FreeIrq
       dd syscall_reserveportarea ; 46-ReservePortArea and FreePortArea
@@ -168,7 +168,7 @@ iglobal
       dd syscall_move_window     ; 67-Window move or resize
       dd f68                     ; 68-Some internal services
       dd sys_debug_services      ; 69-Debug
-      dd file_system_lfn         ; 70-Common file system interface, version 2
+      dd sys_file_system_lfn     ; 70-Common file system interface, version 2
       dd syscall_window_settings ; 71-Window settings
       dd sys_sendwindowmsg       ; 72-Send window message
       dd blit_32                 ; 73-blitter;
@@ -178,7 +178,7 @@ iglobal
       dd sys_posix               ; posix support
       dd undefined_syscall       ; 78-free
       dd undefined_syscall       ; 79-free
-      dd fileSystemUnicode       ; 80-File system interface for different encodings
+      dd sys_fileSystemUnicode   ; 80-File system interface for different encodings
 
         times 255 - ( ($-servetable2) /4 )  dd undefined_syscall
       dd sys_end                 ; -1-end application

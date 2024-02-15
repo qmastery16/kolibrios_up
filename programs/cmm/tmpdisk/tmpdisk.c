@@ -4,10 +4,6 @@
 #include "..\lib\strings.h"
 #include "..\lib\fs.h"
 
-#ifndef AUTOBUILD
-#include "lang.h--"
-#endif
-
 /////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////              Program data                  ////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -52,10 +48,9 @@ int driver_handle;
 
 void main()
 {   
-	driver_handle = LoadDriver("tmpdisk");
-	if (driver_handle==0)
+	if (! driver_handle = LoadDriver("tmpdisk"))
 	{
-		notify("'TmpDisk\nError: /rd1/1/drivers/tmpdisk.obj driver loading failed\nvirtual disk wouldn't be added' -tE");
+		notify("'TmpDisk\nError: /sys/drivers/tmpdisk.obj driver loading failed\nVirtual disk wouldn't be added' -tE");
 		ExitProcess();
 	}
 

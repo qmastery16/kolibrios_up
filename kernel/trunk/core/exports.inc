@@ -1,11 +1,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                              ;;
-;; Copyright (C) KolibriOS team 2004-2015. All rights reserved. ;;
+;; Copyright (C) KolibriOS team 2004-2022. All rights reserved. ;;
 ;; Distributed under terms of the GNU General Public License    ;;
 ;;                                                              ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-$Revision: 7168 $
+$Revision: 9894 $
 
  align 4
 __exports:
@@ -18,6 +18,21 @@ __exports:
           disk_add,              'DiskAdd',            \      ;stdcall
           disk_del,              'DiskDel',            \
           disk_media_changed,    'DiskMediaChanged',   \      ;stdcall
+\
+          fs_read32_sys,         'FsRead32Sys',        \
+          fs_read32_app,         'FsRead32App',        \
+          fs_read64_sys,         'FsRead64Sys',        \
+          fs_read64_app,         'FsRead64App',        \
+\
+          fs_write32_sys,        'FsWrite32Sys',       \
+          fs_write32_app,        'FsWrite32App',       \
+          fs_write64_sys,        'FsWrite64Sys',       \
+          fs_write64_app,        'FsWrite64App',       \
+\
+          fs_add,                'FsAdd',              \
+\         ;fs_del,                'FsDel',              \
+\
+          disk_sync,             'DiskSync',           \
 \
           create_event,          'CreateEvent',        \      ; ecx, esi
           destroy_event,         'DestroyEvent',       \      ;
@@ -99,7 +114,7 @@ __exports:
 \
           load_cursor,           'LoadCursor',         \      ;stdcall
 \
-          get_curr_task,         'GetCurrentTask',     \
+          get_curr_slot,         'GetCurrSlot',        \
           change_task,           'ChangeTask',         \
           load_file,             'LoadFile',           \      ;retval eax, ebx
           delay_ms,              'Sleep',              \
@@ -123,6 +138,10 @@ __exports:
           usb_get_param,         'USBGetParam',        \
           usb_hc_func,           'USBHCFunc',          \
 \
+\         ; The intrakernel function of working with the file system.
+\         ; Duplicates system call 70.
+          file_system_lfn_protected_registers, 'FS_Service', \
+\
           net_add_device,        'NetRegDev',          \
           net_remove_device,     'NetUnRegDev',        \
           net_ptr_to_num,        'NetPtrToNum',        \
@@ -136,6 +155,7 @@ __exports:
           acpi_get_root_ptr,     'AcpiGetRootPtr',     \
 \
           0,                     'LFBAddress' ; must be the last one
+
 load kernel_exports_count dword from __exports + 24
 load kernel_exports_addresses dword from __exports + 28
 exp_lfb = OS_BASE + kernel_exports_addresses + (kernel_exports_count - 1) * 4 - 4

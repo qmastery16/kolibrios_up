@@ -11,7 +11,7 @@
 ;;                                                              ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-$Revision: 7132 $
+$Revision: 9958 $
 
 
 ;==========================================================================
@@ -92,6 +92,14 @@ macro _ask_question question,range,variable_to_set
         jz      .esc_pressed
         mov     [variable_to_set], al
 }
+
+clear_status_field:
+        mov     si, space_msg
+        mov     byte [si+80], 0
+        _setcursor 16,0
+        call    printplain
+        _setcursor 16,0
+        ret
 
 boot_read_floppy:
         push    si
@@ -276,7 +284,6 @@ else
         cld
         push    0
         pop     es
-; \begin{diamond}[02.12.2005]
 ; if bootloader sets ax = 'KL', then ds:si points to loader block
         cmp     ax, 'KL'
         jnz     @f
@@ -284,16 +291,14 @@ else
         mov     word [cs:cfgmanager.loader_block+2], ds
         mov     word [es:BOOT_LO.kernel_restart], kernel_restart_bootblock
 @@:
-; \end{diamond}[02.12.2005]
-
 ; if bootloader sets cx = 'HA' and dx = 'RD', then bx contains identifier of source disk
-; (see comment to BOOT_LO.bx_from_load and loader_doc.txt)
-        mov     word [es:BOOT_LO.bx_from_load], 'r1'  ; default value: /rd/1
+; (see comment to BOOT_LO.sys_disk and loader_doc.txt)
+        mov     word [es:BOOT_LO.sys_disk], 'r1'  ; default value: /rd/1
         cmp     cx, 'HA'
         jnz     no_hd_load
         cmp     dx, 'RD'
         jnz     no_hd_load
-        mov     [es:BOOT_LO.bx_from_load], bx
+        mov     [es:BOOT_LO.sys_disk], bx
 no_hd_load:
 
 ; set up stack
@@ -420,7 +425,6 @@ sayerr:
         loopz   @b
         in      al, 0x60
 
-;;;/diamond today   5.02.2008
 ; set keyboard typematic rate & delay
         mov     al, 0xf3
         out     0x60, al
@@ -476,6 +480,40 @@ sayerr:
 apm_end:
         _setcursor d80x25_top_num, 0
 
+; --------------- ACPI ---------------------
+ACPI_LO_RSDP_WINDOW_END    = 0x000A0000
+ACPI_HI_RSDP_WINDOW_START  = 0x000E0000
+
+acpi:
+        xor     eax, eax
+        mov     [es:BOOT_LO.devicesdat_data], eax
+        mov     [es:BOOT_LO.devicesdat_size], eax
+        mov     [es:BOOT_LO.acpi_rsdp], eax
+        push    ds
+        mov     ds, ax
+        mov     ax, word [40Eh]
+        add     ax, 64
+.check:
+        mov     ds, ax
+        cmp     [ds:0], dword 'RSD '
+        jne     .next
+        cmp     [ds:4], dword 'PTR '
+        jne     .next
+        shl     eax, 4
+        mov     [es:BOOT_LO.acpi_rsdp], eax
+        jmp     .end
+.next:
+        inc     ax
+        ; skip VRAM and ROM area A0000h to E0000h
+        cmp     ax, (ACPI_LO_RSDP_WINDOW_END shr 4)
+        jne     @f
+        add     ax, ((ACPI_HI_RSDP_WINDOW_START - ACPI_LO_RSDP_WINDOW_END) shr 4)
+@@:     ; end of 1Mb?
+        or      ax, ax
+        jnz     .check
+.end:
+        pop     ds
+
 if ~ defined extended_primary_loader
 ;CHECK current of code
         cmp     [cfgmanager.loader_block], -1
@@ -494,7 +532,6 @@ noloaderblock:
         call    calc_vmodes_table
         call    check_first_parm   ;check and enable cursor_pos
 
-; \begin{diamond}[30.11.2005]
 cfgmanager:
 ; settings:
 ; a) preboot_graph = graphical mode
@@ -667,7 +704,7 @@ end if
         jnz     .show_remarks
 ; e) preboot_device = from where to boot?
 if defined extended_primary_loader
-        _ask_question bdev,'12',preboot_device              ; range accepted for answer: 1-2
+        _ask_question bdev,'13',preboot_device  ; range accepted for answer: 1-3
 else
         _ask_question bdev,'14',preboot_device              ; range accepted for answer: 1-4
 end if
@@ -830,7 +867,8 @@ end if
 if defined extended_primary_loader
         sub     ax, [preboot_timeout]
 else
-        sub     ax, 18*5
+        ; bios 0x1A timer runs at ~18 ticks per second
+        sub     ax, 18*PREBOOT_TIMEOUT
 end if
         jae     .timergo
         neg     ax
@@ -930,20 +968,30 @@ if ~ defined extended_primary_loader
         push    cs
         push    .cont
         push    eax
-        retf                          ;call back
+        retf                            ;call back
 .loadc:
         pop     eax
 .cont:
         push    cs
         pop     ds
-        mov     si, space_msg
-        mov     byte [si+80], 0
-        _setcursor 16,0
-        call    printplain
-        _setcursor 16,0
+
+        push    es
+        les     bx, [.loader_block]
+        cmp     byte [es:bx+7], 0      ; get write error flag
+        pop     es
+        jz      .load
+        call    clear_status_field
+        mov     si, write_err_msg
+        call    print
+.wait_any_key:
+        xor     ax, ax
+        int     16h
+        test    ax, ax
+        jz      .wait_any_key
+
 .load:
+        call    clear_status_field
 end if
-; \end{diamond}[02.12.2005]
 
 ; ASK GRAPHICS MODE
 
@@ -969,49 +1017,66 @@ end if
 ; BOOT DEVICE
 
         mov     al, [preboot_device]
-        dec     al
-        mov     [es:BOOT_LO.dev], al
+if defined extended_primary_loader
+        cmp     al, RD_LOAD_FROM_MEMORY
+        jnz     @f
+        mov     al, RD_LOAD_FROM_NONE
+@@:
+end if
+        mov     [es:BOOT_LO.rd_load_from], al
+
+; /sys path
+        mov     eax, dword[preboot_syspath+0]
+        mov     dword[es:BOOT_LO.syspath+0], eax
+        mov     eax, dword[preboot_syspath+4]
+        mov     dword[es:BOOT_LO.syspath+4], eax
+        mov     eax, dword[preboot_syspath+8]
+        mov     dword[es:BOOT_LO.syspath+8], eax
+        mov     eax, dword[preboot_syspath+12]
+        mov     dword[es:BOOT_LO.syspath+12], eax
+
 
 ; GET MEMORY MAP
 include '../detect/biosmem.inc'
 
 ; READ DISKETTE TO MEMORY
 
-        cmp     byte [es:BOOT_LO.dev], 0
+        cmp     byte [es:BOOT_LO.rd_load_from], RD_LOAD_FROM_FLOPPY
         jne     no_sys_on_floppy
         mov     si, diskload
         call    print
-        xor     ax, ax            ; reset drive
-        xor     dx, dx
+        xor     ax, ax          ; reset drive
+        xor     dx, dx          ; 1st floppy disk (0)
         int     0x13
 ; do we boot from CD-ROM?
-        mov     ah, 41h
-        mov     bx, 55AAh
-        xor     dx, dx
+        mov     ah, 41h         ; check extended mode
+        mov     bx, 55AAh       ; test 2 bytes to check that this function is supported
+        xor     dx, dx          ; 1st floppy disk (0)
         int     0x13
-        jc      .nocd
+        jc      .nocd           ; extended mode not supported
         cmp     bx, 0AA55h
-        jnz     .nocd
-        mov     ah, 48h
+        jnz     .nocd           ; extended mode not supported
+        mov     ah, 48h         ; extended read drive parameters
         push    ds
         push    es
         pop     ds
         mov     si, 0xa000
-        mov     word [si], 30
+        mov     word [si], 30   ; size of result buffer
         int     0x13
         pop     ds
-        jc      .nocd
+        jc      .nocd           ; error getting parameters
         push    ds
-        lds     si, [es:si+26]
-        test    byte [ds:si+10], 40h
+        lds     si, [es:si+26]  ; pointer to Enhanced Disk Drive (EDD) configuration parameters
+        test    byte [ds:si+10], 40h ; check ATAPI device
         pop     ds
         jz      .nocd
+
 ; yes - read all floppy by 18 sectors
 
 ; TODO: !!!! read only first sector and set variables !!!!!
 ; ...
 ; TODO: !!! then read flippy image track by track
-        
+
         mov     cx, 0x0001      ; startcyl,startsector
 .a1:
         push    cx dx
@@ -1304,7 +1369,7 @@ no_sys_on_floppy:
         out     dx, al
 
 if defined extended_primary_loader
-        cmp     [es:BOOT_LO.dev], 1
+        cmp     [es:BOOT_LO.rd_load_from], RD_LOAD_FROM_HD
         jne     no_sys_from_primary
 ; load kolibri.img using callback from primary loader
         and     word [movedesc + 24 + 2], 0

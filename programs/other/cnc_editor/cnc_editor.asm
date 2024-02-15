@@ -1,20 +1,21 @@
 use32
 	org 0
 	db 'MENUET01'
-	dd 1,start,i_end,mem,stacktop,0,sys_path
+	dd 1,start,i_end,mem,stacktop,file_name,sys_path
 
 include '../../macros.inc'
 include '../../proc32.inc'
 include '../../KOSfuncs.inc'
 include '../../load_img.inc'
+include '../../load_lib.mac'
 include '../../develop/libraries/libs-dev/libimg/libimg.inc'
 include '../../develop/libraries/box_lib/trunk/box_lib.mac'
 include 'lang.inc'
 include 'cnc_editor.inc'
 include '../../develop/info3ds/info_fun_float.inc'
 
-@use_library_mem mem.Alloc,mem.Free,mem.ReAlloc,dll.Load
-caption db 'CNC editor 30.10.18',0 ;подпись окна
+@use_library mem.Alloc,mem.Free,mem.ReAlloc,dll.Load
+caption db 'CNC editor 23.05.19',0 ;подпись окна
 
 run_file_70 FileInfoBlock
 
@@ -31,6 +32,18 @@ include 'wnd_new_file.inc'
 
 align 4
 start:
+	;--- copy cmd line ---
+	mov esi,file_name
+	mov edi,openfile_path
+@@:
+	lodsd
+	or eax,eax
+	jz @f ;выход, если 0
+	stosd
+	jmp @b
+@@:
+	stosd
+
 	load_libraries l_libs_start,l_libs_end
 	;проверка на сколько удачно загузилась библиотека
 	mov	ebp,lib_0
@@ -71,7 +84,11 @@ start:
 	mcall SF_SYSTEM_GET,SSF_TIME_COUNT
 	mov [last_time],eax
 
-	;call but_new_file
+	;open file from cmd line
+	cmp dword[openfile_path],0
+	je @f
+		call but_open_file.no_dlg
+	@@:
 
 align 4
 red_win:
@@ -394,23 +411,25 @@ pushad
 	mcall ,,,14 ;align sel points top
 	add ebx,25 shl 16
 	mcall ,,,15 ;align sel points bottom
-
 	add ebx,25 shl 16
-	mcall ,,,16 ;copy to clipboard
-	add ebx,25 shl 16
-	mcall ,,,17 ;paste from clipboard
-
-	add ebx,25 shl 16
-	mcall ,,,18 ;sel points del
+	mcall ,,,16 ;optimize figure
 
 	add ebx,30 shl 16
-	mcall ,,,19 ;restore zoom
-
-	add ebx,30 shl 16
-	mcall ,,,20 ;.png
+	mcall ,,,17 ;copy to clipboard
+	add ebx,25 shl 16
+	mcall ,,,18 ;paste from clipboard
 
 	add ebx,25 shl 16
-	mcall ,,,21 ;options scale
+	mcall ,,,19 ;sel points del
+
+	add ebx,30 shl 16
+	mcall ,,,20 ;restore zoom
+
+	add ebx,30 shl 16
+	mcall ,,,21 ;.png
+
+	add ebx,25 shl 16
+	mcall ,,,22 ;options scale
 
 	; *** рисование иконок на кнопках ***
 	mcall SF_PUT_IMAGE,[image_data_toolbar],(16 shl 16)+16,(7 shl 16)+7 ;icon new
@@ -453,7 +472,10 @@ pushad
 	add edx,(25 shl 16) ;aling sel points bottom
 	int 0x40
 	add ebx,IMAGE_TOOLBAR_ICON_SIZE
-	add edx,(25 shl 16) ;copy to clipboard
+	add edx,(25 shl 16) ;optimize figure
+	int 0x40
+	add ebx,IMAGE_TOOLBAR_ICON_SIZE
+	add edx,(30 shl 16) ;copy to clipboard
 	int 0x40
 	add ebx,IMAGE_TOOLBAR_ICON_SIZE
 	add edx,(25 shl 16) ;paste from clipboard
@@ -611,36 +633,41 @@ button:
 	@@:
 	cmp ah,16
 	jne @f
-		call but_clipboard_copy_points
+		call but_points_optimize
 		jmp still
 	@@:
 	cmp ah,17
 	jne @f
-		call but_clipboard_paste_points
+		call but_clipboard_copy_points
 		jmp still
 	@@:
 	cmp ah,18
 	jne @f
-		call but_sel_points_del
+		call but_clipboard_paste_points
 		jmp still
 	@@:
 	cmp ah,19
 	jne @f
-		call but_restore_zoom
+		call but_sel_points_del
 		jmp still
 	@@:
 	cmp ah,20
 	jne @f
-		call but_save_png
+		call but_restore_zoom
 		jmp still
 	@@:
 	cmp ah,21
+	jne @f
+		call but_save_png
+		jmp still
+	@@:
+	cmp ah,22
 	jne @f
 		call but_dlg_opt_scale
 		jmp still
 	@@:
 
-	;cmp ah,22
+	;cmp ah,23
 	;jne @f
 		;call but_...
 		;jmp still
@@ -670,13 +697,31 @@ open_file_size dd 0 ;размер открытого файла
 
 align 4
 but_open_file:
-	pushad
 	copy_path open_dialog_name,communication_area_default_path,file_name,0
+	pushad
 	mov [OpenDialog_data.type],0
 	stdcall [OpenDialog_Start],OpenDialog_data
 	cmp [OpenDialog_data.status],2
 	je .end_open_file
 	;код при удачном открытии диалога
+	jmp .end0
+.no_dlg: ;если минуем диалог открытия файла
+		pushad
+		mov esi,openfile_path
+		stdcall str_len,esi
+		add esi,eax
+		@@: ;цикл для поиска начала имени файла
+			dec esi
+			cmp byte[esi],'/'
+			je @f
+			cmp byte[esi],0x5c ;'\'
+			je @f
+			cmp esi,openfile_path
+			jg @b
+		@@:
+		inc esi
+		stdcall [OpenDialog_Set_file_name],OpenDialog_data,esi ;копируем имя файла в диалог сохранения
+	.end0:
 
 	mov [run_file_70.Function], SSF_GET_INFO
 	mov [run_file_70.Position], 0
@@ -729,6 +774,7 @@ endl
 	pushad
 	copy_path open_dialog_name,communication_area_default_path,file_name,0
 	mov [OpenDialog_data.type],1
+	stdcall [OpenDialog_Set_file_ext],OpenDialog_data,Filter.1 ;.nc
 	stdcall [OpenDialog_Start],OpenDialog_data
 	cmp [OpenDialog_data.status],2
 	je .end_save_file
@@ -933,9 +979,10 @@ but_save_png:
 	.beg0:
 	copy_path open_dialog_name,communication_area_default_path,file_name,0
 	mov [OpenDialog_data.type],1
+	stdcall [OpenDialog_Set_file_ext],OpenDialog_data,Filter.2 ;.png
 	stdcall [OpenDialog_Start],OpenDialog_data
-	cmp [OpenDialog_data.status],2
-	je .end_save_file
+	cmp [OpenDialog_data.status],1
+	jne .end_save_file
 		;код при удачном открытии диалога
 		mov dword[png_data],0
 
@@ -1781,6 +1828,21 @@ popad
 	ret
 endp
 
+;description:
+; оптимизация фигуры
+align 4
+proc but_points_optimize uses eax
+	stdcall [tl_node_get_data],tree1
+	or eax,eax
+	jz .no_point
+	cmp [eax+Figure.OType],'Fig'
+	jne .no_point
+		stdcall points_optimize,eax
+		mov dword[offs_last_timer],0 ;для обновления по таймеру
+	.no_point:
+	ret
+endp
+
 align 4
 proc but_restore_zoom uses eax
 	stdcall [tl_node_get_data],tree1
@@ -2008,57 +2070,39 @@ OpenDialog_data:
 .y_size 		dw 320 ;+52 ; Window y size
 .y_start		dw 10 ;+54 ; Window Y position
 
-default_dir db '/rd/1',0
+default_dir db '/sys',0
 
 communication_area_name:
 	db 'FFFFFFFF_open_dialog',0
 open_dialog_name:
 	db 'opendial',0
 communication_area_default_path:
-	db '/rd/1/File managers/',0
+	db '/sys/File managers/',0
 
 Filter:
 dd Filter.end - Filter ;.1
-.1:
-db 'NC',0
-db 'PNG',0
+.1: db 'NC',0
+.2: db 'PNG',0
 .end:
 db 0
 
 
-
-head_f_i:
-head_f_l db 'Системная ошибка',0
-
+align 4
 system_dir_0 db '/sys/lib/'
 lib_name_0 db 'proc_lib.obj',0
-err_message_found_lib_0 db 'Не найдена библиотека ',39,'proc_lib.obj',39,0
-err_message_import_0 db 'Ошибка при импорте библиотеки ',39,'proc_lib.obj',39,0
-
 system_dir_1 db '/sys/lib/'
 lib_name_1 db 'libimg.obj',0
-err_message_found_lib_1 db 'Не найдена библиотека ',39,'libimg.obj',39,0
-err_message_import_1 db 'Ошибка при импорте библиотеки ',39,'libimg.obj',39,0
-
 system_dir_2 db '/sys/lib/'
 lib_name_2 db 'buf2d.obj',0
-err_msg_found_lib_2 db 'Не найдена библиотека ',39,'buf2d.obj',39,0
-err_msg_import_2 db 'Ошибка при импорте библиотеки ',39,'buf2d',39,0
-
 system_dir_3 db '/sys/lib/'
 lib_name_3 db 'box_lib.obj',0
-err_msg_found_lib_3 db 'Не найдена библиотека ',39,'box_lib.obj',39,0
-err_msg_import_3 db 'Ошибка при импорте библиотеки ',39,'box_lib',39,0
 
+align 4
 l_libs_start:
-	lib_0 l_libs lib_name_0, sys_path, file_name, system_dir_0,\
-		err_message_found_lib_0, head_f_l, proclib_import,err_message_import_0, head_f_i
-	lib_1 l_libs lib_name_1, sys_path, file_name, system_dir_1,\
-		err_message_found_lib_1, head_f_l, import_libimg, err_message_import_1, head_f_i
-	lib_2 l_libs lib_name_2, sys_path, library_path, system_dir_2,\
-		err_msg_found_lib_2,head_f_l,import_buf2d,err_msg_import_2,head_f_i
-	lib_3 l_libs lib_name_3, sys_path, file_name,  system_dir_3,\
-		err_msg_found_lib_3, head_f_l, import_box_lib,err_msg_import_3,head_f_i
+	lib_0 l_libs lib_name_0, file_name, system_dir_0, import_proclib
+	lib_1 l_libs lib_name_1, file_name, system_dir_1, import_libimg
+	lib_2 l_libs lib_name_2, library_path, system_dir_2, import_buf2d
+	lib_3 l_libs lib_name_3, file_name, system_dir_3, import_box_lib
 l_libs_end:
 
 align 4
@@ -2109,12 +2153,16 @@ import_libimg:
 	aimg_draw    db 'img_draw',0
 
 align 4
-proclib_import: ;описание экспортируемых функций
+import_proclib:
 	OpenDialog_Init dd aOpenDialog_Init
 	OpenDialog_Start dd aOpenDialog_Start
+	OpenDialog_Set_file_name dd aOpenDialog_Set_file_name
+	OpenDialog_Set_file_ext dd aOpenDialog_Set_file_ext
 dd 0,0
 	aOpenDialog_Init db 'OpenDialog_init',0
 	aOpenDialog_Start db 'OpenDialog_start',0
+	aOpenDialog_Set_file_name db 'OpenDialog_set_file_name',0
+	aOpenDialog_Set_file_ext db 'OpenDialog_set_file_ext',0
 
 align 4
 import_buf2d:
@@ -2232,7 +2280,7 @@ import_box_lib:
 	sz_Option_box_mouse	db 'option_box_mouse',0
 	;sz_Version_op      db 'version_op',0
 
-	sz_edit_box_draw      db 'edit_box',0
+	sz_edit_box_draw      db 'edit_box_draw',0
 	sz_edit_box_key       db 'edit_box_key',0
 	sz_edit_box_mouse     db 'edit_box_mouse',0
 	sz_edit_box_set_text  db 'edit_box_set_text',0

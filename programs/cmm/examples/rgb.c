@@ -41,15 +41,15 @@ int id;
 		if (id==SETBG_BTN) EventSetBackground(#image,256,256);
 		break;
 	case evKey:
-		if (GetKey()==27) ExitProcess();
+		if (GetKeys()==27) ExitProcess();
 		break;
 	case evReDraw:
-		system.color.get();
-		DefineAndDrawWindow(screen.width-fw/2,screen.height-fh/2,fw,fh+skin_height,0x33,0xE0DFE3,"Rainbow (rgb test)",0);
-		_PutImage(0,0,256,256,#image);
-		DrawCaptButton(280,20, 110,30,DRAW1_BTN,system.color.work_button,system.color.work_button_text,"Draw 1");
-		DrawCaptButton(280,60, 110,30,DRAW2_BTN,system.color.work_button,system.color.work_button_text,"Draw 2");
-		DrawCaptButton(280,100,110,30,SETBG_BTN,system.color.work_button,system.color.work_button_text,"Background");
+		sc.get();
+		DefineAndDrawWindow(screen.w-fw/2,screen.h-fh/2,fw,fh+skin_h,0x33,0xE0DFE3,"Rainbow (rgb test)",0);
+		PutImage(0,0,256,256,#image);
+		DrawCaptButton(280,20, 110,30,DRAW1_BTN,sc.button,sc.button_text,"Draw 1");
+		DrawCaptButton(280,60, 110,30,DRAW2_BTN,sc.button,sc.button_text,"Draw 2");
+		DrawCaptButton(280,100,110,30,SETBG_BTN,sc.button,sc.button_text,"Background");
   }
 }
 
@@ -106,7 +106,7 @@ int pos;
 	  image[pos].g = 0;
 	}
   }
-  _PutImage(0,0,256,256,#image);
+  PutImage(0,0,256,256,#image);
 }
 
 void EventDraw2()
@@ -122,7 +122,7 @@ int t2;
 	  image[t2].b = 0;
 	}
   }
-  _PutImage(0,0,256,256,#image);
+  PutImage(0,0,256,256,#image);
 }
 
 void EventSetBackground(dword img_pointer, w,h)
