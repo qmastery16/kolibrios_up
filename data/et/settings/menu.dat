@@ -1,0 +1,141 @@
+#0    **** MAIN ****
+Game center               /sys/allgames
+Demod              >      /@1
+Graafika           >      /@3
+Multimeedia        >      /@4
+Emulators          >      /@18
+Arendus            >      /@5
+Süsteem            >      /@7
+Andmetöötlus       >      /@11
+Võrk               >      /@12
+Teised             >      /@15
+Abi                       /sys/docpack
+Käivita programm          /sys/run
+Sule                      /sys/end
+#1    **** DEMOS ****
+3D                 >      /@2
+Circle                    /sys/demos/circle
+Fractal                   /sys/demos/tinyfrac
+Color demo                /sys/demos/colorref
+Eyes                      /sys/demos/eyes
+Tube                      /sys/demos/tube
+Plasma                    /sys/demos/plasma
+Moveback                  /sys/demos/movback
+Life                      /sys/demos/life2
+TranTest                  /sys/demos/trantest
+WEB                       /sys/demos/web
+FireWork                  /sys/demos/firework
+UnvWater                  /sys/demos/unvwater
+#2  **** 3D demos ****
+ScreenSaver               /sys/3d/crownscr
+3D-labyrinth              /sys/3d/free3d04
+3D-cube                   /sys/3d/3dcube2
+Ray tracing               /sys/3d/ray
+View3DS                   /sys/3d/view3ds
+Gears                     /sys/3d/gears
+3D-waved area             /sys/3d/3dwav
+#3   **** GRAPHICS ****
+Image viewer KIV          /sys/media/kiv
+Image viewer zSea         /kolibrios/media/zsea/zsea
+Animage                   /sys/media/animage
+Image Filtering           /sys/media/imgf/imgf
+Palitra                   /sys/media/palitra
+#4   **** MULTIMEDIA ****
+Pixie MP3 Player          /sys/media/pixie/pixie
+AC97SND Audioplayer       /sys/media/ac97snd
+Fplay - video             /kolibrios/media/fplay
+MidAMP                    /sys/media/midamp
+#5    **** PROGRAMMING ****
+Examples           >      /@6
+Arhivaator KPack          /sys/kpack
+Flat Assembler            /sys/develop/fasm
+Diff Tool                 /sys/develop/diff
+Silumisaken               /sys/develop/board
+Silur                     /sys/develop/mtdbg
+Hex2Dec2Bin               /sys/develop/h2d2b
+ASCII-koodid              /sys/develop/keyascii
+SCAN-koodid               /sys/develop/scancode
+#6    **** EXAMPLES ****
+Lõimed                    /sys/develop/thread
+Color slider              /sys/demos/cslide
+Konsooli näide 1          /sys/develop/testcon2
+Konsooli näide 2          /sys/develop/test_gets
+Message Boxes example     /sys/demos/use_mb
+#7    **** SYSTEM ****
+Sätted             >      /@11
+Süsteemi sensorid  >      /@12
+Töö failidega      >      /@13
+Testimine          >      /@16
+Hõlbustus seaded   >      /@17
+Silumisaken               /sys/develop/board
+Clipboard viewer          /sys/develop/clipview
+Terminal                  /sys/terminal
+#8    **** SETTINGS ****
+Seadmed                   /sys/setup
+Tausta genereerija        /sys/media/palitra
+Värvid & Teemad           /sys/skincfg
+MyKey                     /sys/mykey
+ATI video reziim          /sys/vmode
+#9    **** SYSTEM SENSORS ****
+Protsesside haldur        /sys/cpu
+PCI seadmed               /sys/pcidev
+CPUID                     /sys/cpuid
+Ghost Monitor             /sys/gmon
+K. Bus disconnected       /sys/kbd
+HDD info                  /sys/hdd_info
+#10  **** WORK WITH FILES ****
+KFAR                      /sys/File Managers/kfar
+KFM                       /sys/File Managers/kfm
+Eolite                    /sys/File Managers/Eolite
+Virtual disks             /sys/tmpdisk
+SHELL konsool             /sys/shell
+Salvesta RD tõmmis        /sys/rdsave
+#11 **** DATA PROCESSING ****
+Kalkulaator               /sys/calc
+Teksti redaktor           /sys/tinypad
+TextEdit                  /sys/develop/t_edit
+Tabelarvutus              /sys/table
+Graph builder             /sys/graph
+Hex-Editor                /sys/develop/heed
+#12    **** NET ****
+Teenused           >      /@13
+Kliendid           >      /@14
+Võrgu seadistus           /sys/network/netcfg
+Võrgu staatus             /sys/network/netstat
+#13    **** SERVERS ****
+FTP daemon                /sys/network/ftpd
+#14   **** CLIENTS ****
+IRC klient                /sys/network/ircc
+FTP klient                /sys/network/ftpc
+TFTP klient               /sys/network/tftpc
+Ping                      /sys/network/ping
+Telnet klient             /sys/network/telnet
+Synergy klient            /sys/network/synergyc
+DNS otsing                /sys/network/nslookup
+VNC Viewer                /sys/network/vncc
+Interneti allalaadija     /sys/network/downloader
+Tekstipõhine brauser      /sys/network/webview
+#15    **** OTHER ****
+Analoogkell               /sys/demos/aclock
+Digitaalne kell           /sys/demos/bcdclk
+Taimer                    /sys/demos/timer
+Ekraani tõmmis            /sys/scrshoot
+Kalender                  /sys/calendar
+RTF faili lugeja          /sys/rtfread
+#16    **** SYSTEM TESTS ****
+Protection test           /sys/test
+Monitor test              /sys/disptest
+Testi graafika kiirust    /sys/mgb
+FSPEED speed of FS        /sys/fspeed
+#17    **** SYSTEM SPECIAL ****
+Ekraani suurendusklaas    /sys/magnify
+Ekraani klaviatuur        /sys/zkey
+Märgistiku tabel          /sys/ASCIIVju
+#18    **** EMULATORS ****
+DOSBox DOS Emulator       /kolibrios/emul/DosBox/dosbox
+e80 (ZX Spectrum)         /kolibrios/emul/e80/e80
+FCE Ultra - NES           /kolibrios/emul/fceu/fce
+Gameboy Color             /kolibrios/emul/gameboy
+ScummVM (adventure)       /kolibrios/emul/scummvm
+ZSNES Super Nintendo      /kolibrios/emul/zsnes
+##

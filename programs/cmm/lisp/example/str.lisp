@@ -1,0 +1,1 @@
+(set var1 "test string")(print (get var1))
